@@ -1,0 +1,6 @@
+{
+  "name": "SYNCBARBER",
+  "description": "Plataforma inteligente multi-inquilino de agendamiento en tiempo real con gestión de barberías, comisiones y licencias.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
