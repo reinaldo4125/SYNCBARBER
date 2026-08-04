@@ -44,63 +44,55 @@ export default function SalonSettings({
   const [closeTime, setCloseTime] = useState(config.closeTime);
   const [workingDays, setWorkingDays] = useState<number[]>(config.workingDays);
   const [intervalMinutes, setIntervalMinutes] = useState(config.intervalMinutes);
+  const [noShowPenaltyAmount, setNoShowPenaltyAmount] = useState<number>(config.noShowPenaltyAmount !== undefined ? config.noShowPenaltyAmount : 10000);
+  const [isSavingPenalty, setIsSavingPenalty] = useState(false);
+  const [penaltySuccess, setPenaltySuccess] = useState(false);
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [configSuccess, setConfigSuccess] = useState(false);
-  const [licenseType, setLicenseType] = useState<"basica" | "profesional" | "premium">((config.licenseType as any) || "premium");
-  
-  // Key Activation State
-  const [activationKey, setActivationKey] = useState("");
-  const [isActivating, setIsActivating] = useState(false);
-  const [activationError, setActivationError] = useState("");
+  const activeLicense = config.licenseType || "premium";
 
-  const handleKeyActivation = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activationKey.trim()) return;
-
-    setIsActivating(true);
-    setActivationError("");
-
-    try {
-      const res = await fetch("/api/licenses/activate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: activationKey.trim() })
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (triggerToast) {
-          triggerToast(
-            "Licencia Activada 🚀", 
-            `Tu suscripción se actualizó con éxito a: ${data.license.licenseType.toUpperCase()}`, 
-            "success"
-          );
-        }
-        setActivationKey("");
-      } else {
-        const errData = await res.json();
-        setActivationError(errData.error || "La clave de licencia no es válida.");
-      }
-    } catch (err) {
-      console.error(err);
-      setActivationError("Error al conectar con el servidor.");
-    } finally {
-      setIsActivating(false);
-    }
-  };
+  // Brand/Theme states
+  const [accentColor, setAccentColor] = useState(config.accentColor || "gold");
+  const [textColor, setTextColor] = useState(config.textColor || "#FFFFFF");
+  const [backgroundColor, setBackgroundColor] = useState(config.backgroundColor || "#0B0C10");
+  const [cardColor, setCardColor] = useState(config.cardColor || "#141414");
+  const [subCardColor, setSubCardColor] = useState(config.subCardColor || "#1A1A1A");
+  const [borderColor, setBorderColor] = useState(config.borderColor || "#262626");
+  const [tagline, setTagline] = useState(config.tagline || "");
+  const [customLogoUrl, setCustomLogoUrl] = useState(config.customLogoUrl || "");
 
   React.useEffect(() => {
-    if (config.licenseType) {
-      setLicenseType(config.licenseType);
-    }
-  }, [config.licenseType]);
+    if (config.accentColor) setAccentColor(config.accentColor);
+    if (config.textColor) setTextColor(config.textColor);
+    if (config.backgroundColor) setBackgroundColor(config.backgroundColor);
+    if (config.cardColor) setCardColor(config.cardColor);
+    if (config.subCardColor) setSubCardColor(config.subCardColor);
+    if (config.borderColor) setBorderColor(config.borderColor);
+    if (config.tagline !== undefined) setTagline(config.tagline || "");
+    if (config.customLogoUrl !== undefined) setCustomLogoUrl(config.customLogoUrl || "");
+    if (config.name) setSalonName(config.name);
+    if (config.openTime) setOpenTime(config.openTime);
+    if (config.closeTime) setCloseTime(config.closeTime);
+    if (config.workingDays) setWorkingDays(config.workingDays);
+    if (config.intervalMinutes) setIntervalMinutes(config.intervalMinutes);
+    if (config.noShowPenaltyAmount !== undefined) setNoShowPenaltyAmount(config.noShowPenaltyAmount);
+  }, [config]);
+
+  const DEFAULT_CATEGORIES = [
+    { id: "cabello", name: "Corte de Cabello" },
+    { id: "barba", name: "Barbería & Barba" },
+    { id: "color", name: "Tinte & Coloración" },
+    { id: "tratamiento", name: "Tratamiento Capilar" }
+  ];
+
+  const serviceCategories = config.serviceCategories || DEFAULT_CATEGORIES;
 
   // New Service state
   const [showAddForm, setShowAddForm] = useState(false);
   const [newServiceName, setNewServiceName] = useState("");
   const [newServicePrice, setNewServicePrice] = useState("");
   const [newServiceDuration, setNewServiceDuration] = useState("30");
-  const [newServiceCategory, setNewServiceCategory] = useState<'cabello' | 'barba' | 'color' | 'tratamiento'>("cabello");
+  const [newServiceCategory, setNewServiceCategory] = useState<string>(serviceCategories[0]?.id || "cabello");
   const [newServiceDescription, setNewServiceDescription] = useState("");
   const [serviceError, setServiceError] = useState("");
   const [isSavingService, setIsSavingService] = useState(false);
@@ -110,8 +102,109 @@ export default function SalonSettings({
   const [editName, setEditName] = useState("");
   const [editPrice, setEditPrice] = useState("");
   const [editDuration, setEditDuration] = useState("");
-  const [editCategory, setEditCategory] = useState<'cabello' | 'barba' | 'color' | 'tratamiento'>("cabello");
+  const [editCategory, setEditCategory] = useState<string>("cabello");
   const [editDescription, setEditDescription] = useState("");
+
+  // Categories Manager State
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editCategoryName, setEditCategoryName] = useState("");
+  const [categoryError, setCategoryError] = useState("");
+
+  const handleAddCategory = async () => {
+    setCategoryError("");
+    const trimmed = newCategoryName.trim();
+    if (!trimmed) return;
+
+    // Generar un ID único (slugificado)
+    const slug = trimmed
+      .toLowerCase()
+      .replace(/[^a-z0-9 ]/g, "")
+      .replace(/\s+/g, "-") || `cat_${Date.now()}`;
+
+    // Validar duplicado
+    if (serviceCategories.some((c) => c.id === slug || c.name.toLowerCase() === trimmed.toLowerCase())) {
+      setCategoryError("Esta categoría ya existe.");
+      return;
+    }
+
+    const updatedCategories = [...serviceCategories, { id: slug, name: trimmed }];
+    try {
+      await onUpdateConfig({ ...config, serviceCategories: updatedCategories });
+      setNewCategoryName("");
+      if (triggerToast) {
+        triggerToast("Categoría Creada", `La categoría "${trimmed}" se ha creado con éxito.`, "success");
+      }
+    } catch (e) {
+      console.error(e);
+      setCategoryError("Error al guardar la categoría.");
+    }
+  };
+
+  const startEditingCategory = (cat: { id: string; name: string }) => {
+    setEditingCategoryId(cat.id);
+    setEditCategoryName(cat.name);
+  };
+
+  const handleSaveCategory = async (catId: string) => {
+    const trimmed = editCategoryName.trim();
+    if (!trimmed) return;
+
+    // Validar duplicado en otras categorías
+    if (serviceCategories.some((c) => c.id !== catId && c.name.toLowerCase() === trimmed.toLowerCase())) {
+      setCategoryError("Otra categoría ya tiene este nombre.");
+      return;
+    }
+
+    const updatedCategories = serviceCategories.map((c) =>
+      c.id === catId ? { ...c, name: trimmed } : c
+    );
+
+    try {
+      await onUpdateConfig({ ...config, serviceCategories: updatedCategories });
+      setEditingCategoryId(null);
+      if (triggerToast) {
+        triggerToast("Categoría Actualizada", `La categoría ha sido renombrada a "${trimmed}".`, "success");
+      }
+    } catch (e) {
+      console.error(e);
+      setCategoryError("Error al guardar cambios.");
+    }
+  };
+
+  const handleDeleteCategory = async (catId: string, catName: string) => {
+    const servicesUsing = services.filter((s) => s.category === catId);
+    
+    let confirmMsg = `¿Estás seguro de eliminar la categoría "${catName}"?`;
+    if (servicesUsing.length > 0) {
+      confirmMsg += `\n\nAtención: Hay ${servicesUsing.length} servicio(s) que usan esta categoría actualmente. Serán reclasificados de inmediato a la categoría "${serviceCategories.find(c => c.id !== catId)?.name || 'general'}".`;
+    }
+
+    if (!window.confirm(confirmMsg)) return;
+
+    const remainingCategories = serviceCategories.filter((c) => c.id !== catId);
+    const fallbackCatId = remainingCategories[0]?.id || "cabello";
+
+    try {
+      // Guardar categorías actualizadas
+      await onUpdateConfig({ ...config, serviceCategories: remainingCategories });
+
+      // Reclasificar servicios
+      if (servicesUsing.length > 0) {
+        for (const s of servicesUsing) {
+          await onUpdateService(s.id, { category: fallbackCatId });
+        }
+      }
+
+      if (triggerToast) {
+        triggerToast("Categoría Eliminada", `La categoría "${catName}" fue eliminada.`, "success");
+      }
+    } catch (e) {
+      console.error(e);
+      setCategoryError("Error al eliminar la categoría.");
+    }
+  };
 
   // Handle saving general salon configs
   const handleSaveConfig = async (e: React.FormEvent) => {
@@ -126,7 +219,15 @@ export default function SalonSettings({
         closeTime,
         workingDays,
         intervalMinutes: Number(intervalMinutes),
-        licenseType,
+        accentColor,
+        textColor,
+        backgroundColor,
+        cardColor,
+        subCardColor,
+        borderColor,
+        tagline,
+        customLogoUrl,
+        noShowPenaltyAmount: Number(noShowPenaltyAmount),
       });
       setConfigSuccess(true);
       setTimeout(() => setConfigSuccess(false), 3000);
@@ -305,6 +406,228 @@ export default function SalonSettings({
               </div>
             </div>
 
+            {/* Configuración de Multa por Inasistencia */}
+            <div className="border-t border-elegant-border/80 pt-4 mt-4 space-y-3 bg-rose-950/20 p-4 rounded-2xl border border-rose-900/50 shadow-sm">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-xs font-extrabold text-rose-300 uppercase tracking-wider flex items-center gap-1.5 font-sans">
+                  <AlertCircle className="h-4 w-4 text-rose-400 animate-pulse" />
+                  🚨 Política de Multas por Inasistencia
+                </h3>
+              </div>
+              <p className="text-[10px] text-rose-200/80 leading-relaxed">
+                Define el valor del recargo en pesos COP que se asignará a la ficha del cliente cuando se marque <strong>"No Asistió"</strong> en una reserva. Se cobrará o exonerará en su siguiente cita.
+              </p>
+              
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-rose-200 uppercase block">Valor de la Multa ($ COP)</label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-rose-400 font-bold text-sm">$</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1000"
+                      value={noShowPenaltyAmount}
+                      onChange={(e) => setNoShowPenaltyAmount(Number(e.target.value))}
+                      className="w-full pl-8 pr-3 py-2.5 bg-rose-950/80 border border-rose-700/80 text-white font-mono font-extrabold text-base rounded-xl focus:ring-2 focus:ring-rose-500 shadow-inner"
+                      placeholder="10000"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={isSavingPenalty}
+                    onClick={async () => {
+                      setIsSavingPenalty(true);
+                      try {
+                        await onUpdateConfig({ noShowPenaltyAmount: Number(noShowPenaltyAmount) });
+                        setPenaltySuccess(true);
+                        if (triggerToast) {
+                          triggerToast(
+                            "Multa Guardada",
+                            `Se actualizó el valor de la multa a $${Number(noShowPenaltyAmount).toLocaleString()} COP`,
+                            "success"
+                          );
+                        }
+                        setTimeout(() => setPenaltySuccess(false), 4000);
+                      } catch (err) {
+                        console.error(err);
+                      } finally {
+                        setIsSavingPenalty(false);
+                      }
+                    }}
+                    className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs rounded-xl shadow-md cursor-pointer transition-all flex items-center justify-center gap-2 shrink-0 active:scale-95 disabled:opacity-50"
+                  >
+                    <Check className="h-4 w-4 text-white" />
+                    <span>{isSavingPenalty ? "Guardando..." : "Guardar Multa"}</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between text-[9px] font-mono text-rose-300/70">
+                  <span>Ejemplo: 10000 (equivale a $10.000 COP)</span>
+                </div>
+
+                {penaltySuccess && (
+                  <div className="p-2.5 bg-emerald-950/60 border border-emerald-700 text-emerald-300 rounded-xl text-xs font-bold text-center animate-fadeIn flex items-center justify-center gap-2">
+                    <Check className="h-4 w-4 text-emerald-400" />
+                    <span>¡Valor de multa actualizado y guardado correctamente!</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Personalización de Marca */}
+            <div className="border-t border-elegant-border/80 pt-4 mt-4 space-y-3.5">
+              <h3 className="text-[11px] font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-elegant-gold" />
+                Personalización de Marca (Branding)
+              </h3>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Color de Acento */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Color de Acento del Salón</label>
+                  <select
+                    value={accentColor}
+                    onChange={(e) => setAccentColor(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-sm md:text-xs bg-elegant-sub text-white focus:ring-1 focus:ring-elegant-gold h-10"
+                  >
+                    <option value="gold" className="bg-elegant-card text-white">Dorado Elegante</option>
+                    <option value="cyan" className="bg-elegant-card text-cyan-400">Cian Tecnológico</option>
+                    <option value="emerald" className="bg-elegant-card text-emerald-400">Verde Esmeralda</option>
+                    <option value="blue" className="bg-elegant-card text-blue-400">Azul Zafiro</option>
+                    <option value="violet" className="bg-elegant-card text-violet-400">Morado Real</option>
+                    <option value="rose" className="bg-elegant-card text-rose-400">Rosa Carmesí</option>
+                    <option value="amber" className="bg-elegant-card text-amber-500">Ámbar Cálido</option>
+                  </select>
+                </div>
+
+                {/* Eslogan / Tagline */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Eslogan o Lema comercial</label>
+                  <input
+                    type="text"
+                    placeholder="Ej: Estilo & Elegancia para tu barba"
+                    value={tagline}
+                    onChange={(e) => setTagline(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-sm md:text-xs bg-elegant-sub text-white focus:ring-1 focus:ring-elegant-gold"
+                  />
+                </div>
+              </div>
+
+              {/* URL del Logo Personalizado */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">URL del Logo de la Barbería (o Iniciales)</label>
+                <input
+                  type="text"
+                  placeholder="Ej: https://midominio.com/logo.png o 'BB'"
+                  value={customLogoUrl}
+                  onChange={(e) => setCustomLogoUrl(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-sm md:text-xs bg-elegant-sub text-white focus:ring-1 focus:ring-elegant-gold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {/* Color de Texto Accent */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Color de Texto Accent</label>
+                  <div className="flex gap-1.5 items-center">
+                    <input
+                      type="color"
+                      value={textColor}
+                      onChange={(e) => setTextColor(e.target.value)}
+                      className="w-8 h-8 rounded-lg border border-elegant-border bg-transparent p-0 cursor-pointer overflow-hidden shrink-0"
+                    />
+                    <input
+                      type="text"
+                      value={textColor}
+                      onChange={(e) => setTextColor(e.target.value)}
+                      className="w-full px-2 py-2 bg-elegant-sub border border-elegant-border text-white text-[10px] rounded-lg font-mono uppercase focus:ring-1 focus:ring-elegant-gold"
+                    />
+                  </div>
+                </div>
+
+                {/* Color de Fondo del Salón */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Color de Fondo del Salón</label>
+                  <div className="flex gap-1.5 items-center">
+                    <input
+                      type="color"
+                      value={backgroundColor}
+                      onChange={(e) => setBackgroundColor(e.target.value)}
+                      className="w-8 h-8 rounded-lg border border-elegant-border bg-transparent p-0 cursor-pointer overflow-hidden shrink-0"
+                    />
+                    <input
+                      type="text"
+                      value={backgroundColor}
+                      onChange={(e) => setBackgroundColor(e.target.value)}
+                      className="w-full px-2 py-2 bg-elegant-sub border border-elegant-border text-white text-[10px] rounded-lg font-mono uppercase focus:ring-1 focus:ring-elegant-gold"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Nuevos controles para colores de Secciones y Bordes */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Color de Tarjetas / Secciones */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Color de Secciones (Tarjetas)</label>
+                  <div className="flex gap-1.5 items-center">
+                    <input
+                      type="color"
+                      value={cardColor}
+                      onChange={(e) => setCardColor(e.target.value)}
+                      className="w-8 h-8 rounded-lg border border-elegant-border bg-transparent p-0 cursor-pointer overflow-hidden shrink-0"
+                    />
+                    <input
+                      type="text"
+                      value={cardColor}
+                      onChange={(e) => setCardColor(e.target.value)}
+                      className="w-full px-2 py-2 bg-elegant-sub border border-elegant-border text-white text-[10px] rounded-lg font-mono uppercase focus:ring-1 focus:ring-elegant-gold"
+                    />
+                  </div>
+                </div>
+
+                {/* Color de Sub-secciones */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Color de Sub-secciones</label>
+                  <div className="flex gap-1.5 items-center">
+                    <input
+                      type="color"
+                      value={subCardColor}
+                      onChange={(e) => setSubCardColor(e.target.value)}
+                      className="w-8 h-8 rounded-lg border border-elegant-border bg-transparent p-0 cursor-pointer overflow-hidden shrink-0"
+                    />
+                    <input
+                      type="text"
+                      value={subCardColor}
+                      onChange={(e) => setSubCardColor(e.target.value)}
+                      className="w-full px-2 py-2 bg-elegant-sub border border-elegant-border text-white text-[10px] rounded-lg font-mono uppercase focus:ring-1 focus:ring-elegant-gold"
+                    />
+                  </div>
+                </div>
+
+                {/* Color de Bordes */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Color de Bordes</label>
+                  <div className="flex gap-1.5 items-center">
+                    <input
+                      type="color"
+                      value={borderColor}
+                      onChange={(e) => setBorderColor(e.target.value)}
+                      className="w-8 h-8 rounded-lg border border-elegant-border bg-transparent p-0 cursor-pointer overflow-hidden shrink-0"
+                    />
+                    <input
+                      type="text"
+                      value={borderColor}
+                      onChange={(e) => setBorderColor(e.target.value)}
+                      className="w-full px-2 py-2 bg-elegant-sub border border-elegant-border text-white text-[10px] rounded-lg font-mono uppercase focus:ring-1 focus:ring-elegant-gold"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {configSuccess && (
               <p className="text-xs text-emerald-300 bg-emerald-950/40 border border-emerald-800/50 p-2 rounded-xl text-center">
                 ¡Configuración guardada y compartida con éxito!
@@ -321,200 +644,73 @@ export default function SalonSettings({
           </form>
         </div>
 
-        {/* 1.5. Gestión de Licencia del Software */}
+        {/* 1.5. Información de Licencia Contratada (Informativo) */}
         <div className="bg-elegant-card border border-elegant-border rounded-3xl p-5 md:p-6 shadow-xs space-y-4">
-          <div className="border-b border-elegant-border pb-3">
-            <h2 className="text-sm font-bold text-white font-sans flex items-center gap-1.5">
-              <Sparkles className="h-4.5 w-4.5 text-elegant-gold animate-pulse" />
-              Suscripción & Licencias
-            </h2>
-            <p className="text-[11px] text-elegant-text-muted">
-              Cambia la licencia de uso para simular los módulos de acuerdo a cada plan.
-            </p>
+          <div className="border-b border-elegant-border pb-3 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-bold text-white font-sans flex items-center gap-1.5">
+                <Sparkles className="h-4.5 w-4.5 text-elegant-gold" />
+                Información de Licencia Contratada
+              </h2>
+              <p className="text-[11px] text-elegant-text-muted">
+                Detalles de la suscripción y módulos habilitados para tu establecimiento.
+              </p>
+            </div>
+            <span className="px-2.5 py-1 bg-emerald-950/60 border border-emerald-800/80 text-emerald-300 rounded-full text-[10px] font-extrabold uppercase tracking-wider font-mono flex items-center gap-1 shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              Licencia Activa
+            </span>
           </div>
 
-          <div className="space-y-3">
-            {/* Básica */}
-            <div
-              onClick={async () => {
-                setLicenseType("basica");
-                await onUpdateConfig({ ...config, licenseType: "basica" });
-              }}
-              className={`border p-3.5 rounded-2xl cursor-pointer transition-all ${
-                licenseType === "basica"
-                  ? "border-elegant-gold bg-elegant-gold/10 ring-1 ring-elegant-gold"
-                  : "border-elegant-border bg-elegant-sub/60 hover:border-neutral-700 hover:bg-elegant-card"
-              }`}
-            >
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className={`font-bold text-xs ${licenseType === "basica" ? "text-elegant-gold" : "text-white"}`}>
-                    🥉 Licencia Básica (Bronce)
-                  </h3>
-                  <p className="text-[10px] text-elegant-text-muted mt-0.5">Perfecto para salones/barberías independientes.</p>
-                </div>
-                <span className="text-[10px] font-bold text-white bg-elegant-border px-2 py-0.5 rounded-md font-mono">$15 / mes</span>
+          <div className="bg-gradient-to-br from-[#121A2A] to-[#0E1422] border border-amber-500/20 rounded-2xl p-4 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <span className="text-[10px] text-amber-400/80 font-mono uppercase font-bold tracking-wider">Plan Contratado</span>
+                <h3 className="text-sm font-extrabold text-white flex items-center gap-2 mt-0.5">
+                  {activeLicense === "premium" && "🥇 Licencia Premium (Oro / Full)"}
+                  {activeLicense === "profesional" && "🥈 Licencia Profesional (Plata)"}
+                  {activeLicense === "basica" && "🥉 Licencia Básica (Bronce)"}
+                </h3>
               </div>
-              <div className="mt-2.5 space-y-1 text-[9px]">
-                <div className="flex items-center text-emerald-400 gap-1 font-semibold">
-                  <span>✔</span>
-                  <span>Agenda de Citas Diaria (Vista lista)</span>
-                </div>
-                <div className="flex items-center text-emerald-400 gap-1 font-semibold">
-                  <span>✔</span>
-                  <span>Catálogo de Servicios & Barberos</span>
-                </div>
-                <div className="flex items-center text-rose-400/70 gap-1">
-                  <span>✘</span>
-                  <span className="line-through text-elegant-text-muted/60">Calendario Drag & Drop interactivo</span>
-                </div>
-                <div className="flex items-center text-rose-400/70 gap-1">
-                  <span>✘</span>
-                  <span className="line-through text-elegant-text-muted/60">Módulo de Comisiones y Propinas</span>
-                </div>
-                <div className="flex items-center text-rose-400/70 gap-1">
-                  <span>✘</span>
-                  <span className="line-through text-elegant-text-muted/60">Bloqueo de agenda (Enfermedades/Vacaciones)</span>
-                </div>
+              <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded-xl self-start sm:self-center">
+                {activeLicense === "premium" ? "SaaS Empresarial Multi-Barbero" : activeLicense === "profesional" ? "Equipo & Agenda Avanzada" : "Atención Básica"}
+              </span>
+            </div>
+
+            <div className="border-t border-slate-800/80 pt-3 grid grid-cols-2 gap-3 text-[11px]">
+              <div>
+                <span className="text-gray-400 text-[10px] block font-mono">Establecimiento:</span>
+                <span className="font-bold text-white">{salonName || config.name}</span>
+              </div>
+              <div>
+                <span className="text-gray-400 text-[10px] block font-mono">Estado del Sistema:</span>
+                <span className="font-bold text-emerald-400">Servicio Activo</span>
               </div>
             </div>
 
-            {/* Profesional */}
-            <div
-              onClick={async () => {
-                setLicenseType("profesional");
-                await onUpdateConfig({ ...config, licenseType: "profesional" });
-              }}
-              className={`border p-3.5 rounded-2xl cursor-pointer transition-all ${
-                licenseType === "profesional"
-                  ? "border-elegant-gold bg-elegant-gold/10 ring-1 ring-elegant-gold"
-                  : "border-elegant-border bg-elegant-sub/60 hover:border-neutral-700 hover:bg-elegant-card"
-              }`}
-            >
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className={`font-bold text-xs ${licenseType === "profesional" ? "text-elegant-gold" : "text-white"}`}>
-                    🥈 Licencia Profesional (Plata)
-                  </h3>
-                  <p className="text-[10px] text-elegant-text-muted mt-0.5">Optimiza la agenda y gestión de tu equipo.</p>
-                </div>
-                <span className="text-[10px] font-bold text-white bg-elegant-border px-2 py-0.5 rounded-md font-mono">$35 / mes</span>
-              </div>
-              <div className="mt-2.5 space-y-1 text-[9px]">
-                <div className="flex items-center text-emerald-400 gap-1 font-semibold">
-                  <span>✔</span>
-                  <span>Todo lo de la licencia Básica</span>
-                </div>
-                <div className="flex items-center text-emerald-400 gap-1 font-semibold">
-                  <span>✔</span>
-                  <span>Calendario Interactivo Drag & Drop</span>
-                </div>
-                <div className="flex items-center text-emerald-400 gap-1 font-semibold">
-                  <span>✔</span>
-                  <span>Bloqueo de Agenda por ausencias (Médica/Descanso)</span>
-                </div>
-                <div className="flex items-center text-emerald-400 gap-1 font-semibold">
-                  <span>✔</span>
-                  <span>Gestión básica de Clientes</span>
-                </div>
-                <div className="flex items-center text-rose-400/70 gap-1">
-                  <span>✘</span>
-                  <span className="line-through text-elegant-text-muted/60">Comisiones y Propinas de Barberos</span>
-                </div>
-                <div className="flex items-center text-rose-400/70 gap-1">
-                  <span>✘</span>
-                  <span className="line-through text-elegant-text-muted/60">Membresías VIP y sistema de puntos</span>
-                </div>
-              </div>
+            <div className="bg-[#162237]/60 rounded-xl p-3 border border-[#1F314D] space-y-1.5">
+              <span className="text-[10px] text-gray-300 font-bold uppercase tracking-wider block">
+                Módulos Incluidos en tu Plan:
+              </span>
+              <ul className="grid sm:grid-cols-2 gap-1.5 text-[10px] text-gray-200">
+                <li className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                  <Check className="h-3 w-3 shrink-0" />
+                  <span>Agenda & Reservas Online</span>
+                </li>
+                <li className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                  <Check className="h-3 w-3 shrink-0" />
+                  <span>Administrador de Barberos</span>
+                </li>
+                <li className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                  <Check className="h-3 w-3 shrink-0" />
+                  <span>Inventario POS & Cierre de Caja</span>
+                </li>
+                <li className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                  <Check className="h-3 w-3 shrink-0" />
+                  <span>Membresías VIP & Puntos</span>
+                </li>
+              </ul>
             </div>
-
-            {/* Premium */}
-            <div
-              onClick={async () => {
-                setLicenseType("premium");
-                await onUpdateConfig({ ...config, licenseType: "premium" });
-              }}
-              className={`border p-3.5 rounded-2xl cursor-pointer transition-all ${
-                licenseType === "premium"
-                  ? "border-elegant-gold bg-elegant-gold/10 ring-1 ring-elegant-gold"
-                  : "border-elegant-border bg-elegant-sub/60 hover:border-neutral-700 hover:bg-elegant-card"
-              }`}
-            >
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className={`font-bold text-xs ${licenseType === "premium" ? "text-elegant-gold" : "text-white"}`}>
-                    🥇 Licencia Premium (Oro / Full)
-                  </h3>
-                  <p className="text-[10px] text-elegant-text-muted mt-0.5">El control absoluto para un negocio de alto volumen.</p>
-                </div>
-                <span className="text-[10px] font-bold text-elegant-bg bg-elegant-gold px-2 py-0.5 rounded-md font-mono">$59 / mes</span>
-              </div>
-              <div className="mt-2.5 space-y-1 text-[9px]">
-                <div className="flex items-center text-emerald-400 gap-1 font-semibold">
-                  <span>✔</span>
-                  <span>Acceso ilimitado a todos los módulos</span>
-                </div>
-                <div className="flex items-center text-emerald-400 gap-1 font-semibold">
-                  <span>✔</span>
-                  <span>Comisiones y Propinas Avanzadas</span>
-                </div>
-                <div className="flex items-center text-emerald-400 gap-1 font-semibold">
-                  <span>✔</span>
-                  <span>Estadísticas Financieras & Reportes de Ingresos</span>
-                </div>
-                <div className="flex items-center text-emerald-400 gap-1 font-semibold">
-                  <span>✔</span>
-                  <span>Membresías VIP y Plan de Lealtad (Puntos)</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Activación por llave de licencia SaaS */}
-          <div className="border-t border-elegant-border/80 pt-4 mt-2 space-y-3 text-xs">
-            <h3 className="text-xs font-bold text-white flex items-center gap-1.5">
-              <Key className="h-3.5 w-3.5 text-elegant-gold" />
-              Activar con Clave de Licencia
-            </h3>
-            <p className="text-[10px] text-elegant-text-muted leading-relaxed">
-              Si tienes una clave de licencia SaaS emitida por el panel de desarrollador, ingrésala a continuación para activar todos tus módulos premium y profesionales en vivo.
-            </p>
-
-            {config.activeLicenseKey ? (
-              <div className="bg-emerald-950/40 border border-emerald-800/50 p-2.5 rounded-xl flex items-center justify-between text-[11px] text-emerald-300">
-                <span className="flex items-center gap-1.5 font-semibold">
-                  <span>🟢 Activo:</span>
-                  <span className="font-mono bg-emerald-900/35 px-1.5 py-0.5 rounded border border-emerald-800/40">{config.activeLicenseKey}</span>
-                </span>
-                <span className="text-[9px] uppercase font-bold text-emerald-400">Verificado</span>
-              </div>
-            ) : (
-              <div className="bg-amber-950/20 border border-amber-900/30 p-2.5 rounded-xl text-[10px] text-amber-300">
-                <span>⚠️ Operando bajo selección de demostración manual temporal. Sin clave permanente registrada.</span>
-              </div>
-            )}
-
-            <form onSubmit={handleKeyActivation} className="flex gap-2">
-              <input
-                type="text"
-                required
-                placeholder="Ej: LIC-PREM-XXXXX-2026"
-                value={activationKey}
-                onChange={(e) => setActivationKey(e.target.value)}
-                className="flex-1 px-3 py-2 bg-elegant-sub border border-elegant-border text-white text-xs font-mono rounded-xl focus:outline-none focus:border-elegant-gold placeholder-neutral-600 uppercase"
-              />
-              <button
-                type="submit"
-                disabled={isActivating || !activationKey}
-                className="px-4 py-2 bg-elegant-gold hover:bg-amber-500 disabled:opacity-50 text-elegant-bg font-bold text-xs rounded-xl transition-all cursor-pointer shrink-0"
-              >
-                {isActivating ? "Verificando..." : "Activar"}
-              </button>
-            </form>
-
-            {activationError && (
-              <p className="text-[10px] text-rose-400 font-semibold">{activationError}</p>
-            )}
           </div>
         </div>
       </div>
@@ -522,7 +718,7 @@ export default function SalonSettings({
       {/* 2. Gestor de Servicios */}
       <div className="lg:col-span-2 space-y-6">
         <div className="bg-elegant-card border border-elegant-border rounded-3xl p-5 md:p-6 shadow-xs space-y-6">
-          <div className="flex justify-between items-center border-b border-elegant-border pb-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-elegant-border pb-4">
             <div>
               <h2 className="text-sm font-bold text-white font-sans flex items-center gap-1.5">
                 <Scissors className="h-4.5 w-4.5 text-elegant-gold" />
@@ -531,14 +727,153 @@ export default function SalonSettings({
               <p className="text-[11px] text-elegant-text-muted">Agrega, edita o elimina servicios disponibles para agendamiento de clientes.</p>
             </div>
 
-            <button
-              onClick={() => setShowAddForm(!showAddForm)}
-              className="px-3 py-1.5 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg rounded-xl text-xs font-extrabold transition-colors flex items-center gap-1 cursor-pointer"
-            >
-              {showAddForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-              <span>{showAddForm ? "Cerrar Form" : "Nuevo Servicio"}</span>
-            </button>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={() => {
+                  setShowCategoryManager(!showCategoryManager);
+                  setShowAddForm(false);
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-colors flex items-center gap-1 cursor-pointer border ${
+                  showCategoryManager
+                    ? "bg-elegant-border text-white border-transparent"
+                    : "bg-elegant-sub border-elegant-border text-elegant-text hover:bg-elegant-card"
+                }`}
+              >
+                <Grid className="h-3.5 w-3.5" />
+                <span>{showCategoryManager ? "Cerrar Categorías" : "Gestionar Categorías"}</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowAddForm(!showAddForm);
+                  setShowCategoryManager(false);
+                }}
+                className="px-3 py-1.5 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg rounded-xl text-xs font-extrabold transition-colors flex items-center gap-1 cursor-pointer"
+              >
+                {showAddForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                <span>{showAddForm ? "Cerrar Form" : "Nuevo Servicio"}</span>
+              </button>
+            </div>
           </div>
+
+          {/* Administrador de Categorías */}
+          {showCategoryManager && (
+            <div className="bg-elegant-sub/40 border border-elegant-border rounded-2xl p-4 space-y-4 animate-fadeIn text-xs">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="text-xs font-bold text-elegant-gold flex items-center gap-1">
+                    <Grid className="h-4 w-4" />
+                    Gestionar Categorías de Servicios
+                  </h3>
+                  <p className="text-[10px] text-elegant-text-muted mt-0.5">
+                    Crea categorías personalizadas, o renombra/elimina las existentes. Las categorías se reflejarán de inmediato.
+                  </p>
+                </div>
+              </div>
+
+              {/* Formulario Agregar Categoría */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Ej. Limpieza Facial, Manicura"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-elegant-border rounded-xl text-xs bg-elegant-sub text-white focus:ring-1 focus:ring-elegant-gold placeholder-neutral-500 h-9"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      handleAddCategory();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={handleAddCategory}
+                  className="px-3 py-2 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg rounded-xl text-xs font-bold flex items-center gap-1 h-9 cursor-pointer"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Agregar
+                </button>
+              </div>
+
+              {categoryError && (
+                <p className="text-[10px] text-rose-400 font-semibold">{categoryError}</p>
+              )}
+
+              {/* Lista de Categorías */}
+              <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                {serviceCategories.map((cat) => {
+                  const isEditingCat = editingCategoryId === cat.id;
+                  const countServices = services.filter((s) => s.category === cat.id).length;
+
+                  return (
+                    <div
+                      key={cat.id}
+                      className="flex items-center justify-between gap-3 p-2.5 bg-elegant-card/50 border border-elegant-border rounded-xl"
+                    >
+                      {isEditingCat ? (
+                        <div className="flex items-center gap-2 flex-1">
+                          <input
+                            type="text"
+                            value={editCategoryName}
+                            onChange={(e) => setEditCategoryName(e.target.value)}
+                            className="flex-1 px-2.5 py-1 border border-elegant-border rounded-lg text-xs bg-elegant-sub text-white focus:ring-1 focus:ring-elegant-gold"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleSaveCategory(cat.id);
+                              if (e.key === "Escape") setEditingCategoryId(null);
+                            }}
+                          />
+                          <button
+                            onClick={() => handleSaveCategory(cat.id)}
+                            className="p-1.5 text-emerald-400 bg-emerald-950/25 border border-emerald-900/40 rounded-lg hover:bg-emerald-950/50 cursor-pointer"
+                            title="Guardar"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setEditingCategoryId(null)}
+                            className="p-1.5 text-rose-400 bg-rose-950/25 border border-rose-900/40 rounded-lg hover:bg-rose-950/50 cursor-pointer"
+                            title="Cancelar"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-2 flex-1">
+                            <span className="font-semibold text-white">{cat.name}</span>
+                            <span className="text-[8px] bg-elegant-sub border border-elegant-border text-elegant-text-muted px-1.5 py-0.5 rounded-md font-mono">
+                              {countServices} {countServices === 1 ? "servicio" : "servicios"}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => startEditingCategory(cat)}
+                              className="p-1.5 text-elegant-text-muted hover:text-white bg-elegant-sub border border-elegant-border rounded-lg transition-colors cursor-pointer"
+                              title="Renombrar Categoría"
+                            >
+                              <Edit className="h-3 w-3" />
+                            </button>
+                            
+                            {serviceCategories.length > 1 && (
+                              <button
+                                onClick={() => handleDeleteCategory(cat.id, cat.name)}
+                                className="p-1.5 text-rose-400 hover:text-rose-300 bg-rose-950/10 border border-rose-900/20 rounded-lg transition-colors cursor-pointer"
+                                title="Eliminar Categoría"
+                              >
+                                <Trash className="h-3 w-3" />
+                              </button>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Formulario para Agregar Nuevo Servicio */}
           {showAddForm && (
@@ -599,13 +934,14 @@ export default function SalonSettings({
                   <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Categoría *</label>
                   <select
                     value={newServiceCategory}
-                    onChange={(e) => setNewServiceCategory(e.target.value as any)}
+                    onChange={(e) => setNewServiceCategory(e.target.value)}
                     className="w-full px-3 py-2 border border-elegant-border rounded-xl text-xs bg-elegant-sub text-white focus:ring-1 focus:ring-elegant-gold h-9"
                   >
-                    <option value="cabello" className="bg-elegant-card text-white">Corte de Cabello</option>
-                    <option value="barba" className="bg-elegant-card text-white">Barbería & Barba</option>
-                    <option value="color" className="bg-elegant-card text-white">Tinte & Coloración</option>
-                    <option value="tratamiento" className="bg-elegant-card text-white">Tratamiento Capilar</option>
+                    {serviceCategories.map((cat) => (
+                      <option key={cat.id} value={cat.id} className="bg-elegant-card text-white">
+                        {cat.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -680,13 +1016,14 @@ export default function SalonSettings({
                         <label className="text-[9px] font-bold text-elegant-text-muted block mb-0.5">CATEGORÍA</label>
                         <select
                           value={editCategory}
-                          onChange={(e) => setEditCategory(e.target.value as any)}
+                          onChange={(e) => setEditCategory(e.target.value)}
                           className="w-full px-2 py-1.5 border border-elegant-border rounded-lg text-xs bg-elegant-sub text-white"
                         >
-                          <option value="cabello" className="bg-elegant-card text-white">Corte de Cabello</option>
-                          <option value="barba" className="bg-elegant-card text-white">Barbería & Barba</option>
-                          <option value="color" className="bg-elegant-card text-white">Tinte & Coloración</option>
-                          <option value="tratamiento" className="bg-elegant-card text-white">Tratamiento Capilar</option>
+                          {serviceCategories.map((cat) => (
+                            <option key={cat.id} value={cat.id} className="bg-elegant-card text-white">
+                              {cat.name}
+                            </option>
+                          ))}
                         </select>
                       </div>
                     </div>
@@ -723,7 +1060,7 @@ export default function SalonSettings({
                     <div className="flex items-center space-x-2">
                       <h4 className="font-bold text-xs text-white">{s.name}</h4>
                       <span className="text-[8px] bg-elegant-card text-elegant-text-muted border border-elegant-border font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
-                        {s.category}
+                        {serviceCategories.find(c => c.id === s.category)?.name || s.category}
                       </span>
                     </div>
                     {s.description && <p className="text-[10px] text-elegant-text-muted leading-relaxed">{s.description}</p>}

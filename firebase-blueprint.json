@@ -1,0 +1,39 @@
+{
+  "entities": {
+    "SalonGlobals": {
+      "title": "SalonGlobals",
+      "description": "Global settings and tenants data for SyncBarber",
+      "type": "object",
+      "properties": {
+        "tenants": { "type": "array" },
+        "salonAdmins": { "type": "array" },
+        "generatedLicenses": { "type": "array" },
+        "helpdeskTickets": { "type": "array" }
+      }
+    },
+    "TenantData": {
+      "title": "TenantData",
+      "description": "Complete data structure for a barber salon tenant",
+      "type": "object",
+      "properties": {
+        "config": { "type": "object" },
+        "services": { "type": "array" },
+        "barbers": { "type": "array" },
+        "appointments": { "type": "array" },
+        "clients": { "type": "array" },
+        "reviews": { "type": "array" },
+        "memberships": { "type": "array" }
+      }
+    }
+  },
+  "firestore": {
+    "/salon_system/{documentId}": {
+      "schema": "SalonGlobals",
+      "description": "Global system collection"
+    },
+    "/salon_tenants/{tenantId}": {
+      "schema": "TenantData",
+      "description": "Tenant specific collection"
+    }
+  }
+}

@@ -95,7 +95,7 @@ export default function BarberLogin({ onLogin, onCancel }: BarberLoginProps) {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 bg-elegant-gold hover:bg-amber-500 text-elegant-bg font-bold text-xs rounded-xl cursor-pointer transition-colors active:scale-98 flex items-center justify-center gap-1.5"
+            className="w-full py-2.5 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg font-bold text-xs rounded-xl cursor-pointer transition-colors active:scale-98 flex items-center justify-center gap-1.5"
           >
             {loading ? "Verificando..." : "Iniciar Sesión"}
           </button>

@@ -1,5 +1,8 @@
 import React, { useState } from "react";
 import { ClientAccount, Appointment, MembershipPlan } from "../types";
+import { calculateClientRetention, calculateSalonRetentionMetrics } from "../utils/retentionUtils";
+import ClientVisualCard from "./ClientVisualCard";
+import RetentionEngineModal from "./RetentionEngineModal";
 import { 
   Users, 
   Search, 
@@ -19,7 +22,13 @@ import {
   UserCheck,
   Gift,
   UserPlus,
-  X
+  X,
+  Zap,
+  Camera,
+  AlertTriangle,
+  TrendingDown,
+  Send,
+  Filter
 } from "lucide-react";
 
 interface ClientManagerProps {
@@ -42,6 +51,15 @@ export default function ClientManager({
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedClientId, setExpandedClientId] = useState<string | null>(null);
   
+  // Navigation tab: 'all' or 'retention'
+  const [activeMainTab, setActiveMainTab] = useState<'all' | 'retention'>('all');
+
+  // Retention filter inside retention tab: 'all' | 'at_risk' | 'due_soon' | 'ok'
+  const [retentionFilter, setRetentionFilter] = useState<'all' | 'at_risk' | 'due_soon' | 'ok'>('all');
+
+  // Modal for AI Re-Cut Engine
+  const [retentionModalClient, setRetentionModalClient] = useState<ClientAccount | null>(null);
+
   // Edit states for individual clients
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
   const [editMembershipId, setEditMembershipId] = useState<string>("");
@@ -61,8 +79,9 @@ export default function ClientManager({
   const [isSubmittingCreate, setIsSubmittingCreate] = useState(false);
   const [formError, setFormError] = useState("");
 
+  const retentionMetrics = calculateSalonRetentionMetrics(clients, appointments);
+
   const handleOpenCreateForm = () => {
-    // Pre-populate with a random 6-digit password for convenience
     const randomPass = Math.floor(100000 + Math.random() * 900000).toString();
     setNewPassword(randomPass);
     setNewName("");
@@ -98,7 +117,6 @@ export default function ClientManager({
           loyaltyPoints: newLoyaltyPoints,
         });
         setSuccessMsg(`¡Cliente ${newName} registrado con éxito!`);
-        // Reset form
         setNewName("");
         setNewPhone("");
         setNewEmail("");
@@ -106,7 +124,6 @@ export default function ClientManager({
         setNewMembershipId("");
         setNewLoyaltyPoints(1);
         setShowCreateForm(false);
-        // Auto dismiss success message
         setTimeout(() => setSuccessMsg(""), 4000);
       }
     } catch (err: any) {
@@ -129,13 +146,15 @@ export default function ClientManager({
     setErrorMsg("");
     setSuccessMsg("");
     try {
+      const selectedPlan = editMembershipId ? editMembershipId : null;
+      const isActive = Boolean(selectedPlan);
       await onUpdateClient(client.id, {
-        membershipId: editMembershipId || null as any,
+        membershipId: selectedPlan as any,
+        membershipActive: isActive,
         loyaltyPoints: editLoyaltyPoints,
       });
-      setSuccessMsg(`¡Cliente ${client.name} actualizado con éxito!`);
+      setSuccessMsg(`¡Membresía y datos de ${client.name} guardados con éxito!`);
       setEditingClientId(null);
-      // Auto dismiss success message
       setTimeout(() => setSuccessMsg(""), 4000);
     } catch (err: any) {
       setErrorMsg(err.message || "Error al actualizar el cliente.");
@@ -160,11 +179,20 @@ export default function ClientManager({
   // Filter clients based on search term
   const filteredClients = clients.filter(c => {
     const term = searchTerm.toLowerCase();
-    return (
+    const matchesSearch = (
       c.name.toLowerCase().includes(term) ||
       c.phone.toLowerCase().includes(term) ||
       c.email.toLowerCase().includes(term)
     );
+
+    if (!matchesSearch) return false;
+
+    if (activeMainTab === 'retention' && retentionFilter !== 'all') {
+      const ret = calculateClientRetention(c, appointments);
+      return ret.status === retentionFilter;
+    }
+
+    return true;
   });
 
   // Calculate stats
@@ -176,7 +204,6 @@ export default function ClientManager({
 
   // Get client's appointments history helper
   const getClientAppointments = (client: ClientAccount) => {
-    // Match by phone or email
     return appointments.filter(app => {
       const phoneMatch = app.clientPhone.replace(/\s+/g, '') === client.phone.replace(/\s+/g, '');
       const emailMatch = client.email && app.clientEmail && app.clientEmail.toLowerCase() === client.email.toLowerCase();
@@ -193,6 +220,7 @@ export default function ClientManager({
       case "bronze":
         return "bg-orange-700/10 border border-orange-700/30 text-orange-400 font-semibold";
       default:
+        if (planId) return "bg-amber-500/10 border border-amber-500/30 text-amber-300 font-bold";
         return "bg-neutral-800 text-neutral-400 border border-neutral-700 text-xs";
     }
   };
@@ -202,33 +230,69 @@ export default function ClientManager({
       case "gold": return "VIP ORO";
       case "silver": return "PLATA";
       case "bronze": return "BRONCE";
-      default: return "Ninguna";
+      default:
+        if (planId) {
+          const matched = memberships.find(m => m.id === planId);
+          return matched ? matched.name.toUpperCase() : planId.toUpperCase();
+        }
+        return "Ninguna";
     }
   };
 
   return (
     <div className="space-y-6" id="client-membership-manager">
-      {/* Encabezado */}
+      {/* Encabezado Principal */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-extrabold text-white font-sans flex items-center gap-2">
             <Users className="h-5 w-5 text-elegant-gold" />
-            Cartera de Clientes & Membresías
+            Gestión Inteligente de Clientes & Retención
           </h2>
           <p className="text-xs text-elegant-text-muted">
-            Monitorea los clientes registrados, cambia su nivel de membresía, revisa su historial de visitas en tiempo real y gestiona sus sellos de fidelización.
+            Administra la cartera de clientes, activa el motor de re-corte con IA y consulta las fichas técnicas con galería visual de fotos.
           </p>
         </div>
         <div>
           <button
             onClick={handleOpenCreateForm}
             className="w-full sm:w-auto px-4 py-2.5 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer shrink-0"
-            title="Crear un nuevo cliente directamente en la base de datos"
           >
             <UserPlus className="h-4 w-4" />
             <span>Registrar Cliente</span>
           </button>
         </div>
+      </div>
+
+      {/* Pestañas Principales: Cartera General vs Inteligencia de Retención */}
+      <div className="flex border-b border-elegant-border/60 gap-3">
+        <button
+          onClick={() => setActiveMainTab('all')}
+          className={`pb-3 text-xs font-extrabold transition-all border-b-2 flex items-center gap-2 cursor-pointer ${
+            activeMainTab === 'all'
+              ? "border-elegant-gold text-white"
+              : "border-transparent text-elegant-text-muted hover:text-white"
+          }`}
+        >
+          <Users className="h-4 w-4" />
+          <span>Todos los Clientes ({clients.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveMainTab('retention')}
+          className={`pb-3 text-xs font-extrabold transition-all border-b-2 flex items-center gap-2 cursor-pointer ${
+            activeMainTab === 'retention'
+              ? "border-elegant-gold text-white"
+              : "border-transparent text-elegant-text-muted hover:text-white"
+          }`}
+        >
+          <Zap className="h-4 w-4 text-elegant-gold" />
+          <span>Motor de Re-Corte & Retención IA</span>
+          {retentionMetrics.atRiskCount > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-rose-950 text-rose-300 border border-rose-800">
+              {retentionMetrics.atRiskCount} en riesgo
+            </span>
+          )}
+        </button>
       </div>
 
       {/* Formulario de Registro de Nuevo Cliente */}
@@ -253,7 +317,6 @@ export default function ClientManager({
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Nombre */}
             <div className="space-y-1">
               <label className="text-[10px] font-bold text-elegant-text-muted uppercase">Nombre Completo *</label>
               <input 
@@ -266,7 +329,6 @@ export default function ClientManager({
               />
             </div>
 
-            {/* Teléfono */}
             <div className="space-y-1">
               <label className="text-[10px] font-bold text-elegant-text-muted uppercase">Teléfono Celular *</label>
               <input 
@@ -279,7 +341,6 @@ export default function ClientManager({
               />
             </div>
 
-            {/* Correo */}
             <div className="space-y-1">
               <label className="text-[10px] font-bold text-elegant-text-muted uppercase">Correo Electrónico *</label>
               <input 
@@ -294,7 +355,6 @@ export default function ClientManager({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Contraseña */}
             <div className="space-y-1">
               <label className="text-[10px] font-bold text-elegant-text-muted uppercase">Contraseña de Acceso *</label>
               <input 
@@ -305,14 +365,10 @@ export default function ClientManager({
                 placeholder="Contraseña del cliente"
                 className="w-full px-3.5 py-2.5 border border-elegant-border rounded-xl text-xs focus:ring-1 focus:ring-elegant-gold bg-elegant-sub text-white font-mono"
               />
-              <p className="text-[9px] text-elegant-text-muted">
-                Código para que el cliente acceda a su portal de fidelización y citas.
-              </p>
             </div>
 
-            {/* Membresía inicial */}
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-elegant-text-muted uppercase">Asignar Membresía Inicial (Opcional)</label>
+              <label className="text-[10px] font-bold text-elegant-text-muted uppercase">Membresía Inicial (Opcional)</label>
               <select
                 value={newMembershipId}
                 onChange={(e) => setNewMembershipId(e.target.value)}
@@ -325,7 +381,6 @@ export default function ClientManager({
               </select>
             </div>
 
-            {/* Puntos de fidelidad */}
             <div className="space-y-1">
               <label className="text-[10px] font-bold text-elegant-text-muted uppercase">Sellos de Fidelidad Iniciales</label>
               <input 
@@ -335,9 +390,6 @@ export default function ClientManager({
                 onChange={(e) => setNewLoyaltyPoints(Math.max(0, Number(e.target.value)))}
                 className="w-full px-3.5 py-2.5 border border-elegant-border rounded-xl text-xs focus:ring-1 focus:ring-elegant-gold bg-elegant-sub text-white"
               />
-              <p className="text-[9px] text-elegant-text-muted">
-                Cantidad de visitas registradas inicialmente.
-              </p>
             </div>
           </div>
 
@@ -360,31 +412,140 @@ export default function ClientManager({
         </form>
       )}
 
-      {/* Tarjetas de Métricas Rápidas */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5">
-        <div className="bg-elegant-card border border-elegant-border p-3 rounded-2xl">
-          <span className="text-[10px] font-bold text-elegant-text-muted uppercase tracking-wider block">Total Clientes</span>
-          <span className="text-xl font-bold text-white font-sans block mt-1">{totalClients}</span>
-        </div>
-        <div className="bg-elegant-card border border-elegant-border p-3 rounded-2xl">
-          <span className="text-[10px] font-bold text-elegant-text-muted uppercase tracking-wider block">Con Suscripción</span>
-          <span className="text-xl font-bold text-elegant-gold font-sans block mt-1">{activeMembershipsCount}</span>
-        </div>
-        <div className="bg-amber-950/20 border border-amber-500/20 p-3 rounded-2xl">
-          <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">Miembros VIP Oro</span>
-          <span className="text-xl font-bold text-amber-400 font-sans block mt-1">{goldCount}</span>
-        </div>
-        <div className="bg-slate-800/40 border border-slate-700 p-3 rounded-2xl">
-          <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider block">Miembros Plata</span>
-          <span className="text-xl font-bold text-slate-300 font-sans block mt-1">{silverCount}</span>
-        </div>
-        <div className="bg-orange-950/20 border border-orange-800/20 p-3 rounded-2xl">
-          <span className="text-[10px] font-bold text-orange-400 uppercase tracking-wider block">Miembros Bronce</span>
-          <span className="text-xl font-bold text-orange-400 font-sans block mt-1">{bronzeCount}</span>
-        </div>
-      </div>
+      {/* METRICAS DE RETENCIÓN IA Y SALÓN */}
+      {activeMainTab === 'retention' ? (
+        <div className="space-y-5 animate-fadeIn">
+          {/* Banner de Inteligencia */}
+          <div className="bg-gradient-to-r from-elegant-card via-elegant-sub to-elegant-card border border-elegant-gold/30 rounded-3xl p-5 space-y-4">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div className="space-y-1">
+                <span className="text-[10px] font-extrabold uppercase tracking-widest text-elegant-gold flex items-center gap-1">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Inteligencia Predicitiva de Retención
+                </span>
+                <h3 className="text-lg font-bold text-white">Análisis del Ciclo de Re-Corte de Barbería</h3>
+                <p className="text-xs text-elegant-text-muted max-w-2xl">
+                  Calcula la frecuencia promedio de corte de cada cliente para predecir cuándo deben retocar su estilo. Envía recordatorios automáticos por WhatsApp generados por IA antes de que se vayan con la competencia.
+                </p>
+              </div>
 
-      {/* Mensajes de feedback */}
+              <div className="flex items-center gap-3 bg-black/40 border border-elegant-border px-4 py-3 rounded-2xl shrink-0">
+                <div className="text-right">
+                  <span className="text-[10px] text-elegant-text-muted uppercase block">Tasa de Retención Activa</span>
+                  <span className="text-xl font-extrabold text-emerald-400 font-mono">{retentionMetrics.retentionRate}%</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Grid de Métricas de Retención */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+              <div className="bg-elegant-sub/60 border border-rose-800/40 p-3 rounded-2xl space-y-0.5">
+                <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider block">Clientes en Riesgo</span>
+                <span className="text-lg font-extrabold text-rose-400 font-mono">{retentionMetrics.atRiskCount}</span>
+                <span className="text-[9px] text-neutral-400 block">Excedieron su ciclo por &gt; 5 días</span>
+              </div>
+
+              <div className="bg-elegant-sub/60 border border-amber-800/40 p-3 rounded-2xl space-y-0.5">
+                <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">Próximos Re-Cortes</span>
+                <span className="text-lg font-extrabold text-amber-400 font-mono">{retentionMetrics.dueSoonCount}</span>
+                <span className="text-[9px] text-neutral-400 block">En ventana de agendamiento</span>
+              </div>
+
+              <div className="bg-elegant-sub/60 border border-emerald-800/40 p-3 rounded-2xl space-y-0.5">
+                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">Clientes Al Día</span>
+                <span className="text-lg font-extrabold text-emerald-400 font-mono">{retentionMetrics.okCount}</span>
+                <span className="text-[9px] text-neutral-400 block">Atendidos recientemente</span>
+              </div>
+
+              <div className="bg-elegant-sub/60 border border-elegant-border p-3 rounded-2xl space-y-0.5">
+                <span className="text-[10px] font-bold text-elegant-gold uppercase tracking-wider block">Ingreso en Riesgo Est.</span>
+                <span className="text-lg font-extrabold text-white font-mono">{formatPrice(retentionMetrics.estimatedRevenueAtRisk)}</span>
+                <span className="text-[9px] text-neutral-400 block">Recuperable con motor IA</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Filtros de Retención */}
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-elegant-card border border-elegant-border p-3 rounded-2xl">
+            <span className="text-xs font-bold text-white flex items-center gap-1.5">
+              <Filter className="h-3.5 w-3.5 text-elegant-gold" />
+              Filtrar Cartera por Estado:
+            </span>
+
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                onClick={() => setRetentionFilter('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  retentionFilter === 'all'
+                    ? "bg-elegant-gold text-elegant-bg"
+                    : "bg-elegant-sub text-neutral-400 hover:text-white"
+                }`}
+              >
+                Todos ({clients.length})
+              </button>
+
+              <button
+                onClick={() => setRetentionFilter('at_risk')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  retentionFilter === 'at_risk'
+                    ? "bg-rose-950 border border-rose-800 text-rose-300"
+                    : "bg-elegant-sub text-rose-400/70 hover:text-rose-400"
+                }`}
+              >
+                🔴 En Riesgo ({retentionMetrics.atRiskCount})
+              </button>
+
+              <button
+                onClick={() => setRetentionFilter('due_soon')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  retentionFilter === 'due_soon'
+                    ? "bg-amber-950 border border-amber-800 text-amber-300"
+                    : "bg-elegant-sub text-amber-400/70 hover:text-amber-400"
+                }`}
+              >
+                🟡 Próximos ({retentionMetrics.dueSoonCount})
+              </button>
+
+              <button
+                onClick={() => setRetentionFilter('ok')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  retentionFilter === 'ok'
+                    ? "bg-emerald-950 border border-emerald-800 text-emerald-300"
+                    : "bg-elegant-sub text-emerald-400/70 hover:text-emerald-400"
+                }`}
+              >
+                🟢 Al Día ({retentionMetrics.okCount})
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Tarjetas de Métricas Rápidas de Cartera */
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 animate-fadeIn">
+          <div className="bg-elegant-card border border-elegant-border p-3 rounded-2xl">
+            <span className="text-[10px] font-bold text-elegant-text-muted uppercase tracking-wider block">Total Clientes</span>
+            <span className="text-xl font-bold text-white font-sans block mt-1">{totalClients}</span>
+          </div>
+          <div className="bg-elegant-card border border-elegant-border p-3 rounded-2xl">
+            <span className="text-[10px] font-bold text-elegant-text-muted uppercase tracking-wider block">Con Suscripción</span>
+            <span className="text-xl font-bold text-elegant-gold font-sans block mt-1">{activeMembershipsCount}</span>
+          </div>
+          <div className="bg-amber-950/20 border border-amber-500/20 p-3 rounded-2xl">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">Miembros VIP Oro</span>
+            <span className="text-xl font-bold text-amber-400 font-sans block mt-1">{goldCount}</span>
+          </div>
+          <div className="bg-slate-800/40 border border-slate-700 p-3 rounded-2xl">
+            <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider block">Miembros Plata</span>
+            <span className="text-xl font-bold text-slate-300 font-sans block mt-1">{silverCount}</span>
+          </div>
+          <div className="bg-orange-950/20 border border-orange-800/20 p-3 rounded-2xl">
+            <span className="text-[10px] font-bold text-orange-400 uppercase tracking-wider block">Miembros Bronce</span>
+            <span className="text-xl font-bold text-orange-400 font-sans block mt-1">{bronzeCount}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Feedback Messages */}
       {successMsg && (
         <div className="p-3 bg-emerald-950/40 border border-emerald-800/50 text-emerald-300 rounded-xl text-xs flex items-center gap-2 animate-fadeIn">
           <Check className="h-4 w-4" />
@@ -403,18 +564,18 @@ export default function ClientManager({
           <Search className="h-4 w-4 text-elegant-text-muted" />
           <input
             type="text"
-            placeholder="Buscar por nombre, celular o correo electrónico..."
+            placeholder="Buscar cliente por nombre, celular o correo..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="bg-transparent border-none text-white placeholder-neutral-500 text-xs w-full focus:outline-none"
           />
         </div>
 
-        {/* Tabla / Lista de Clientes */}
+        {/* Lista de Clientes */}
         {filteredClients.length === 0 ? (
           <div className="py-12 text-center text-elegant-text-muted space-y-2 border border-dashed border-elegant-border rounded-2xl">
             <Users className="h-8 w-8 mx-auto stroke-1" />
-            <p className="text-sm">No se encontraron clientes registrados con ese criterio de búsqueda.</p>
+            <p className="text-sm">No se encontraron clientes con el filtro o término de búsqueda indicado.</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -423,6 +584,7 @@ export default function ClientManager({
               const isEditing = editingClientId === client.id;
               const clientApps = getClientAppointments(client);
               const completedVisits = clientApps.filter(a => a.status === "completed");
+              const retention = calculateClientRetention(client, appointments);
 
               return (
                 <div 
@@ -445,9 +607,16 @@ export default function ClientManager({
                         )}
                       </div>
                       <div className="space-y-1">
-                        <h4 className="font-bold text-xs md:text-sm text-white flex items-center gap-1.5 leading-none">
-                          {client.name}
-                        </h4>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-bold text-xs md:text-sm text-white leading-none">
+                            {client.name}
+                          </h4>
+                          {/* Badge de Retención */}
+                          <span className={`text-[9px] px-2 py-0.5 rounded-full font-extrabold border ${retention.badgeBgClass}`}>
+                            {retention.statusLabel} (hace {retention.daysSinceLastCut}d)
+                          </span>
+                        </div>
+
                         <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-elegant-text-muted">
                           <span className="flex items-center gap-0.5">
                             <Phone className="h-3 w-3" />
@@ -461,116 +630,161 @@ export default function ClientManager({
                       </div>
                     </div>
 
-                    {/* Membresía y Fidelización */}
+                    {/* Acciones Rápidas: Re-Corte IA & Membresía */}
                     <div className="flex flex-wrap items-center gap-2 md:gap-3">
+                      {/* Botón Motor de Re-Corte IA */}
+                      <button
+                        onClick={() => setRetentionModalClient(client)}
+                        className="px-3 py-1.5 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-700/60 text-emerald-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+                        title="Generar mensaje personalizado con IA para WhatsApp"
+                      >
+                        <Zap className="h-3.5 w-3.5 text-emerald-400" />
+                        <span>Re-Corte IA</span>
+                      </button>
+
                       {/* Badge Membresía */}
                       <span className={`text-[10px] px-3 py-1 rounded-full font-bold uppercase tracking-wider ${getMembershipBadgeClass(client.membershipId)}`}>
                         {getMembershipLabel(client.membershipId)}
                       </span>
 
-                      {/* Tarjeta de fidelización rápida */}
+                      {/* Tarjeta de fidelización */}
                       <div className="flex items-center gap-1 bg-elegant-sub border border-elegant-border px-2.5 py-1 rounded-xl text-[11px] text-white">
                         <Award className="h-3.5 w-3.5 text-elegant-gold" />
                         <span className="font-semibold font-mono">{client.loyaltyPoints || 0} sellos</span>
                       </div>
 
-                      {/* Botón de expansión para ver historial */}
+                      {/* Botón expandir Ficha Visual & Historial */}
                       <button
                         onClick={() => setExpandedClientId(isExpanded ? null : client.id)}
-                        className="p-1.5 border border-elegant-border hover:bg-elegant-sub rounded-xl text-elegant-text transition-colors cursor-pointer"
-                        title={isExpanded ? "Ocultar Historial" : "Ver Historial e Información Completa"}
+                        className="p-1.5 border border-elegant-border hover:bg-elegant-sub rounded-xl text-elegant-text transition-colors cursor-pointer flex items-center gap-1 text-xs font-semibold"
+                        title={isExpanded ? "Ocultar Ficha Visual" : "Ver Ficha Visual e Historial Completo"}
                       >
+                        <Camera className="h-3.5 w-3.5 text-elegant-gold" />
                         {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                       </button>
                     </div>
                   </div>
 
-                  {/* Sección expandida */}
+                  {/* ALERTA Y BOTÓN DE EXONERACIÓN RÁPIDA DE MULTA POR INASISTENCIA */}
+                  {(client.pendingPenalty || 0) > 0 && (
+                    <div className="mt-3 bg-rose-950/80 border border-rose-700/80 p-3 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md animate-fadeIn">
+                      <div className="flex items-center gap-2.5 text-xs text-rose-100 font-medium">
+                        <AlertTriangle className="h-5 w-5 text-rose-400 shrink-0 animate-pulse" />
+                        <div>
+                          <span className="font-extrabold text-rose-200 uppercase tracking-wider text-[10px] block">
+                            Multa Activa por Inasistencia Previa
+                          </span>
+                          <span className="text-[11px] text-rose-200/90 font-mono">
+                            Saldo a cobrar o exonerar: <strong className="text-white text-sm font-bold">${(client.pendingPenalty || 10000).toLocaleString()} COP</strong>
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (confirm(`¿Confirmar exoneración total de la multa de $${(client.pendingPenalty || 10000).toLocaleString()} COP a ${client.name}?`)) {
+                            try {
+                              await fetch(`/api/clients/${client.id}/penalties/waive`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ waivedBy: "Admin - Gestión de Clientes" })
+                              });
+                              if (onUpdateClient) {
+                                await onUpdateClient(client.id, { pendingPenalty: 0 });
+                              }
+                              setSuccessMsg(`¡Multa exonerada correctamente para ${client.name}!`);
+                              setTimeout(() => setSuccessMsg(""), 4000);
+                            } catch (e) {
+                              console.error("Error al exonerar:", e);
+                              setErrorMsg("Error al exonerar la multa.");
+                            }
+                          }
+                        }}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shrink-0 shadow-md active:scale-95"
+                      >
+                        <Check className="h-4 w-4" />
+                        <span>✨ Exonerar Multa / Inasistencia</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* SECCIÓN EXPANDIDA: FICHA VISUAL Y EDICIÓN DE CLIENTE */}
                   {isExpanded && (
-                    <div className="mt-5 pt-4 border-t border-elegant-border/40 grid grid-cols-1 md:grid-cols-12 gap-5 animate-fadeIn">
+                    <div className="mt-5 pt-4 border-t border-elegant-border/40 space-y-6 animate-fadeIn">
                       
-                      {/* Columna Izquierda: Acciones de Gestión Manual */}
-                      <div className="md:col-span-5 space-y-4 border-r border-elegant-border/30 pr-0 md:pr-5">
-                        <h5 className="text-[10px] font-bold uppercase tracking-wider text-elegant-gold flex items-center gap-1">
-                          <UserCheck className="h-3.5 w-3.5" />
-                          Modificar Estado de Cliente
-                        </h5>
+                      {/* Ficha Visual & Preferencias Técnicas */}
+                      <ClientVisualCard
+                        client={client}
+                        onUpdateClient={onUpdateClient}
+                      />
 
-                        {isEditing ? (
-                          <div className="space-y-4 bg-elegant-card/40 border border-elegant-border p-3.5 rounded-xl">
-                            {/* Nivel Membresía */}
-                            <div className="space-y-1">
-                              <label className="text-[9px] font-bold text-elegant-text-muted uppercase">Nivel de Membresía</label>
-                              <select
-                                value={editMembershipId}
-                                onChange={(e) => setEditMembershipId(e.target.value)}
-                                className="w-full text-xs px-2.5 py-1.5 border border-elegant-border rounded-lg bg-elegant-sub text-white"
-                              >
-                                <option value="">Ninguna</option>
-                                {memberships.map((m) => (
-                                  <option key={m.id} value={m.id}>
-                                    {m.name} ({m.discountPercent}% descuento)
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
+                      {/* Opciones de Administración de Cuenta & Historial */}
+                      <div className="grid grid-cols-1 md:grid-cols-12 gap-5 pt-2 border-t border-elegant-border/30">
+                        {/* Columna Izquierda: Ajustes de Membresía */}
+                        <div className="md:col-span-5 space-y-3 border-r border-elegant-border/30 pr-0 md:pr-4">
+                          <h5 className="text-[10px] font-bold uppercase tracking-wider text-elegant-gold flex items-center gap-1">
+                            <UserCheck className="h-3.5 w-3.5" />
+                            Ajustar Membresía y Cortesía
+                          </h5>
 
-                            {/* Sellos de Fidelización */}
-                            <div className="space-y-1">
-                              <label className="text-[9px] font-bold text-elegant-text-muted uppercase">Sellos del Cliente (0 a 5+)</label>
-                              <div className="flex items-center space-x-2">
-                                <button
-                                  type="button"
-                                  onClick={() => setEditLoyaltyPoints(Math.max(0, editLoyaltyPoints - 1))}
-                                  className="p-1.5 bg-elegant-sub border border-elegant-border rounded-md text-white hover:bg-elegant-card cursor-pointer"
+                          {isEditing ? (
+                            <div className="space-y-3 bg-elegant-card/40 border border-elegant-border p-3 rounded-xl">
+                              <div className="space-y-1">
+                                <label className="text-[9px] font-bold text-elegant-text-muted uppercase">Nivel de Membresía</label>
+                                <select
+                                  value={editMembershipId}
+                                  onChange={(e) => setEditMembershipId(e.target.value)}
+                                  className="w-full text-xs px-2.5 py-1.5 border border-elegant-border rounded-lg bg-elegant-sub text-white"
                                 >
-                                  <Minus className="h-3 w-3" />
-                                </button>
-                                <span className="w-12 text-center text-xs font-bold font-mono text-white">
-                                  {editLoyaltyPoints}
-                                </span>
+                                  <option value="">Ninguna</option>
+                                  {memberships.map((m) => (
+                                    <option key={m.id} value={m.id}>
+                                      {m.name} ({m.discountPercent}% descuento)
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div className="space-y-1">
+                                <label className="text-[9px] font-bold text-elegant-text-muted uppercase">Sellos Acumulados</label>
+                                <div className="flex items-center space-x-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditLoyaltyPoints(Math.max(0, editLoyaltyPoints - 1))}
+                                    className="p-1.5 bg-elegant-sub border border-elegant-border rounded-md text-white hover:bg-elegant-card cursor-pointer"
+                                  >
+                                    <Minus className="h-3 w-3" />
+                                  </button>
+                                  <span className="w-12 text-center text-xs font-bold font-mono text-white">
+                                    {editLoyaltyPoints}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditLoyaltyPoints(editLoyaltyPoints + 1)}
+                                    className="p-1.5 bg-elegant-sub border border-elegant-border rounded-md text-white hover:bg-elegant-card cursor-pointer"
+                                  >
+                                    <Plus className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="flex gap-2 pt-1 text-[10px]">
                                 <button
-                                  type="button"
-                                  onClick={() => setEditLoyaltyPoints(editLoyaltyPoints + 1)}
-                                  className="p-1.5 bg-elegant-sub border border-elegant-border rounded-md text-white hover:bg-elegant-card cursor-pointer"
+                                  onClick={() => handleSaveEdit(client)}
+                                  disabled={editLoading}
+                                  className="px-3 py-1.5 bg-elegant-gold text-elegant-bg rounded-lg font-bold hover:bg-elegant-gold-hover cursor-pointer disabled:opacity-50"
                                 >
-                                  <Plus className="h-3 w-3" />
+                                  {editLoading ? "Guardando..." : "Guardar Cambios"}
+                                </button>
+                                <button
+                                  onClick={() => setEditingClientId(null)}
+                                  className="px-3 py-1.5 border border-elegant-border text-elegant-text rounded-lg hover:bg-elegant-sub cursor-pointer"
+                                >
+                                  Cancelar
                                 </button>
                               </div>
-                              <p className="text-[9px] text-elegant-text-muted">A los 5 sellos se puede canjear una recompensa (corte gratis).</p>
                             </div>
-
-                            <div className="flex gap-2 pt-1 text-[10px]">
-                              <button
-                                onClick={() => handleSaveEdit(client)}
-                                disabled={editLoading}
-                                className="px-3 py-1.5 bg-elegant-gold text-elegant-bg rounded-lg font-bold hover:bg-amber-500 cursor-pointer disabled:opacity-50"
-                              >
-                                {editLoading ? "Guardando..." : "Guardar Cambios"}
-                              </button>
-                              <button
-                                onClick={() => setEditingClientId(null)}
-                                className="px-3 py-1.5 border border-elegant-border text-elegant-text rounded-lg hover:bg-elegant-sub cursor-pointer"
-                              >
-                                Cancelar
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="space-y-3.5">
-                            {/* Stats */}
-                            <div className="grid grid-cols-2 gap-3 text-center">
-                              <div className="bg-elegant-sub/40 border border-elegant-border rounded-xl p-2.5">
-                                <span className="text-[9px] text-elegant-text-muted uppercase tracking-wider block">Visitas Totales</span>
-                                <span className="text-base font-bold text-white font-mono">{clientApps.length}</span>
-                              </div>
-                              <div className="bg-elegant-sub/40 border border-elegant-border rounded-xl p-2.5">
-                                <span className="text-[9px] text-elegant-text-muted uppercase tracking-wider block">Completadas</span>
-                                <span className="text-base font-bold text-emerald-400 font-mono">{completedVisits.length}</span>
-                              </div>
-                            </div>
-
-                            {/* Acciones Rápidas */}
+                          ) : (
                             <div className="flex flex-wrap gap-2 text-xs">
                               <button
                                 onClick={() => handleStartEdit(client)}
@@ -582,70 +796,66 @@ export default function ClientManager({
                               <button
                                 onClick={() => handleGrantCourtesyStamp(client)}
                                 className="px-3 py-2 bg-emerald-900/30 text-emerald-400 border border-emerald-800/40 hover:bg-emerald-900/50 rounded-xl font-bold flex items-center gap-1 cursor-pointer"
-                                title="Otorga 1 Sello de Cortesía en su tarjeta sin necesidad de registrar cita"
                               >
                                 <Gift className="h-3.5 w-3.5" />
                                 +1 Sello de Cortesía
                               </button>
                             </div>
-                          </div>
-                        )}
-                      </div>
+                          )}
+                        </div>
 
-                      {/* Columna Derecha: Historial de Visitas */}
-                      <div className="md:col-span-7 space-y-3">
-                        <h5 className="text-[10px] font-bold uppercase tracking-wider text-elegant-gold flex items-center gap-1">
-                          <History className="h-3.5 w-3.5" />
-                          Historial de Citas ({clientApps.length} registradas)
-                        </h5>
+                        {/* Columna Derecha: Historial de Visitas */}
+                        <div className="md:col-span-7 space-y-3">
+                          <h5 className="text-[10px] font-bold uppercase tracking-wider text-elegant-gold flex items-center gap-1">
+                            <History className="h-3.5 w-3.5" />
+                            Historial de Citas ({clientApps.length} registradas)
+                          </h5>
 
-                        {clientApps.length === 0 ? (
-                          <p className="text-xs italic text-elegant-text-muted py-4">No se registran citas agendadas con el correo o celular de este cliente.</p>
-                        ) : (
-                          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                            {clientApps.map((app) => (
-                              <div 
-                                key={app.id} 
-                                className={`text-xs p-2.5 rounded-xl border flex justify-between items-center bg-elegant-card/50 ${
-                                  app.status === "completed" ? "border-blue-900/30 opacity-90" :
-                                  app.status === "confirmed" ? "border-emerald-900/30" :
-                                  app.status === "canceled" ? "border-rose-900/30 opacity-70" :
-                                  "border-elegant-gold/20"
-                                }`}
-                              >
-                                <div className="space-y-0.5">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="font-bold text-white">{app.serviceName}</span>
-                                    {app.price === 0 && (
-                                      <span className="bg-emerald-950 text-emerald-400 text-[8px] font-bold px-1 rounded uppercase">Canjeado</span>
-                                    )}
+                          {clientApps.length === 0 ? (
+                            <p className="text-xs italic text-elegant-text-muted py-2">No se registran citas agendadas con este cliente.</p>
+                          ) : (
+                            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                              {clientApps.map((app) => (
+                                <div 
+                                  key={app.id} 
+                                  className={`text-xs p-2.5 rounded-xl border flex justify-between items-center bg-elegant-card/50 ${
+                                    app.status === "completed" ? "border-blue-900/30 opacity-90" :
+                                    app.status === "confirmed" ? "border-emerald-900/30" :
+                                    app.status === "canceled" ? "border-rose-900/30 opacity-70" :
+                                    "border-elegant-gold/20"
+                                  }`}
+                                >
+                                  <div className="space-y-0.5">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-bold text-white">{app.serviceName}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-[10px] text-elegant-text-muted">
+                                      <span className="flex items-center gap-0.5"><Calendar className="h-2.5 w-2.5" />{app.date}</span>
+                                      <span className="flex items-center gap-0.5"><Clock className="h-2.5 w-2.5" />{app.time}</span>
+                                      <span>Barbero: {app.barberName || "Asignado"}</span>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-2 text-[10px] text-elegant-text-muted">
-                                    <span className="flex items-center gap-0.5"><Calendar className="h-2.5 w-2.5" />{app.date}</span>
-                                    <span className="flex items-center gap-0.5"><Clock className="h-2.5 w-2.5" />{app.time}</span>
-                                    <span>Peluquero: {app.barberName || "Cualquiera"}</span>
+
+                                  <div className="text-right space-y-1">
+                                    <span className="font-bold text-white font-mono block">
+                                      {formatPrice(app.price)}
+                                    </span>
+                                    <span className={`text-[8px] px-1.5 py-0.2 rounded font-bold uppercase tracking-wider inline-block ${
+                                      app.status === "completed" ? "bg-blue-950 text-blue-400 border border-blue-900/30" :
+                                      app.status === "confirmed" ? "bg-emerald-950 text-emerald-400 border border-emerald-900/30" :
+                                      app.status === "canceled" ? "bg-rose-950 text-rose-400 border border-rose-900/30" :
+                                      "bg-amber-950 text-amber-400 border border-amber-900/30"
+                                    }`}>
+                                      {app.status === "completed" ? "Completado" :
+                                       app.status === "confirmed" ? "Confirmado" :
+                                       app.status === "canceled" ? "Cancelado" : "Pendiente"}
+                                    </span>
                                   </div>
                                 </div>
-
-                                <div className="text-right space-y-1">
-                                  <span className="font-bold text-white font-mono block">
-                                    {app.price === 0 ? "GRATIS" : formatPrice(app.price)}
-                                  </span>
-                                  <span className={`text-[8px] px-1.5 py-0.2 rounded font-bold uppercase tracking-wider inline-block ${
-                                    app.status === "completed" ? "bg-blue-950 text-blue-400 border border-blue-900/30" :
-                                    app.status === "confirmed" ? "bg-emerald-950 text-emerald-400 border border-emerald-900/30" :
-                                    app.status === "canceled" ? "bg-rose-950 text-rose-400 border border-rose-900/30" :
-                                    "bg-amber-950 text-amber-400 border border-amber-900/30"
-                                  }`}>
-                                    {app.status === "completed" ? "Completado" :
-                                     app.status === "confirmed" ? "Confirmado" :
-                                     app.status === "canceled" ? "Cancelado" : "Pendiente"}
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                     </div>
@@ -656,6 +866,15 @@ export default function ClientManager({
           </div>
         )}
       </div>
+
+      {/* MODAL MOTOR DE RE-CORTE IA */}
+      {retentionModalClient && (
+        <RetentionEngineModal
+          client={retentionModalClient}
+          appointments={appointments}
+          onClose={() => setRetentionModalClient(null)}
+        />
+      )}
     </div>
   );
 }

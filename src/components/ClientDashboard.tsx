@@ -20,7 +20,8 @@ import {
   LogOut,
   Check,
   Gift,
-  Percent
+  Percent,
+  History
 } from "lucide-react";
 
 interface ClientDashboardProps {
@@ -33,6 +34,7 @@ interface ClientDashboardProps {
   formatPrice: (price: number) => string;
   memberships: MembershipPlan[];
   reviews?: BarberReview[];
+  clients?: ClientAccount[];
 }
 
 export default function ClientDashboard({
@@ -45,6 +47,7 @@ export default function ClientDashboard({
   formatPrice,
   memberships = [],
   reviews = [],
+  clients = [],
 }: ClientDashboardProps) {
   // Navigation categories
   const [activeCategory, setActiveCategory] = useState<string>("all");
@@ -127,8 +130,12 @@ export default function ClientDashboard({
   const [reviewError, setReviewError] = useState("");
   const [reviewLoading, setReviewLoading] = useState(false);
 
-  // Client's own appointments tracked in localStorage
+  // Client's own appointments tracked in localStorage or phone search
+  const [appointmentsTab, setAppointmentsTab] = useState<"active" | "history">("active");
   const [myAppIds, setMyAppIds] = useState<string[]>([]);
+  const [searchPhone, setSearchPhone] = useState<string>(() => {
+    return localStorage.getItem("bella_barba_last_phone") || "";
+  });
 
   // Load my appointment IDs and client session from localStorage on mount
   useEffect(() => {
@@ -210,6 +217,16 @@ export default function ClientDashboard({
     }
   }, [loggedClient]);
 
+  // Check if a direct barber has been requested via URL/QR Code
+  useEffect(() => {
+    const directBarberId = localStorage.getItem("direct_barber_id");
+    if (directBarberId && barbers && barbers.some(b => b.id === directBarberId)) {
+      console.log("[ClientDashboard] Auto-selecting direct barber:", directBarberId);
+      setSelectedBarberId(directBarberId);
+      localStorage.removeItem("direct_barber_id"); // clear after selection
+    }
+  }, [barbers]);
+
   // Compute barber rating from reviews list
   const getBarberRating = (barberId: string) => {
     const barberReviews = reviews.filter(r => r.barberId === barberId);
@@ -277,6 +294,26 @@ export default function ClientDashboard({
 
   // Overlap checker: check if a specific slot is busy taking preferred barber into account
   const isSlotBusy = (date: string, time: string) => {
+    // Check if the selected date is today and the slot time has already passed
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const todayStr = `${yyyy}-${mm}-${dd}`;
+
+    if (date === todayStr) {
+      const curH = today.getHours();
+      const curM = today.getMinutes();
+      const currentTimeMinutes = curH * 60 + curM;
+
+      const [h, m] = time.split(":").map(Number);
+      const slotTimeMinutes = h * 60 + m;
+
+      if (slotTimeMinutes <= currentTimeMinutes) {
+        return true; // Past timeslot is disabled/busy for clients
+      }
+    }
+
     if (!selectedService) return false;
     
     const startToMin = (t: string) => {
@@ -298,6 +335,17 @@ export default function ClientDashboard({
         return true; // Overlapping/unavailable!
       }
 
+      // Check if barber has a time block (lunch/rest) on this date & time
+      if (targetBarber && targetBarber.timeBlocks) {
+        const hasBlock = targetBarber.timeBlocks.some((block: any) => {
+          if (block.date !== date) return false;
+          const blockStart = startToMin(block.startTime);
+          const blockEnd = startToMin(block.endTime);
+          return startA < blockEnd && blockStart < endA;
+        });
+        if (hasBlock) return true;
+      }
+
       // Check if this specific barber is busy
       return appointments.some((app) => {
         if (app.date !== date) return false;
@@ -312,6 +360,17 @@ export default function ClientDashboard({
     } else {
       // "Any barber" selected. A slot is busy ONLY if ALL active, non-blocked barbers are busy.
       const freeBarbers = activeBarbers.filter(barber => {
+        // Check if this barber has any time block on this date & time
+        if (barber.timeBlocks) {
+          const hasBlock = barber.timeBlocks.some((block: any) => {
+            if (block.date !== date) return false;
+            const blockStart = startToMin(block.startTime);
+            const blockEnd = startToMin(block.endTime);
+            return startA < blockEnd && blockStart < endA;
+          });
+          if (hasBlock) return false; // not free
+        }
+
         const isBusy = appointments.some((app) => {
           if (app.date !== date) return false;
           if (app.status === "canceled") return false;
@@ -362,6 +421,28 @@ export default function ClientDashboard({
       return;
     }
 
+    // Check if the selected date/time is in the past
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const todayStr = `${yyyy}-${mm}-${dd}`;
+
+    if (selectedDate === todayStr) {
+      const curH = today.getHours();
+      const curM = today.getMinutes();
+      const currentTimeMinutes = curH * 60 + curM;
+
+      const [h, m] = selectedTime.split(":").map(Number);
+      const slotTimeMinutes = h * 60 + m;
+
+      if (slotTimeMinutes <= currentTimeMinutes) {
+        setBookingError("La hora seleccionada ya ha pasado. Por favor selecciona una hora futura.");
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
     try {
       const newApp = await onCreateAppointment({
         clientName,
@@ -376,10 +457,14 @@ export default function ClientDashboard({
       });
 
       if (newApp && newApp.id) {
-        // Save ID locally
+        // Save ID and Phone locally
         const updatedIds = [...myAppIds, newApp.id];
         setMyAppIds(updatedIds);
         localStorage.setItem("bella_barba_appointments", JSON.stringify(updatedIds));
+        if (clientPhone) {
+          localStorage.setItem("bella_barba_last_phone", clientPhone);
+          setSearchPhone(clientPhone);
+        }
         
         // Show success
         setBookingSuccess(newApp);
@@ -603,17 +688,77 @@ export default function ClientDashboard({
 
   // Filter server appointments to find the user's active/past bookings
   const myAppointments = appointments
-    .filter((app) => myAppIds.includes(app.id))
+    .filter((app) => {
+      // 1. Direct match by local storage app IDs
+      if (myAppIds.includes(app.id)) return true;
+
+      // 2. Match by logged-in client profile
+      if (loggedClient) {
+        if (app.clientId && app.clientId === loggedClient.id) return true;
+
+        const cleanLoggedPhone = loggedClient.phone ? loggedClient.phone.replace(/\D/g, "") : "";
+        const cleanAppPhone = app.clientPhone ? app.clientPhone.replace(/\D/g, "") : "";
+        if (cleanLoggedPhone && cleanAppPhone && cleanLoggedPhone.length >= 7 &&
+            (cleanLoggedPhone.includes(cleanAppPhone.slice(-7)) || cleanAppPhone.includes(cleanLoggedPhone.slice(-7)))) {
+          return true;
+        }
+
+        if (loggedClient.email && app.clientEmail && loggedClient.email.toLowerCase().trim() === app.clientEmail.toLowerCase().trim()) {
+          return true;
+        }
+
+        if (loggedClient.name && app.clientName && loggedClient.name.toLowerCase().trim() === app.clientName.toLowerCase().trim()) {
+          return true;
+        }
+      }
+
+      // 3. Match by searched phone or phone saved in booking form/localStorage
+      const targetPhone = searchPhone || clientPhone || localStorage.getItem("bella_barba_last_phone") || "";
+      if (targetPhone) {
+        const cleanTarget = targetPhone.replace(/\D/g, "");
+        const cleanAppPhone = app.clientPhone ? app.clientPhone.replace(/\D/g, "") : "";
+        if (cleanTarget.length >= 7 && cleanAppPhone.length >= 7 &&
+            (cleanTarget.includes(cleanAppPhone.slice(-7)) || cleanAppPhone.includes(cleanTarget.slice(-7)))) {
+          return true;
+        }
+      }
+
+      return false;
+    })
     .sort((a, b) => {
-      // Sort upcoming first
-      const dateCompare = a.date.localeCompare(b.date);
+      // Priority status order: upcoming/active (confirmed, pending) first, then completed, then canceled
+      const statusOrder: Record<string, number> = {
+        confirmed: 1,
+        pending: 2,
+        completed: 3,
+        canceled: 4,
+      };
+      const orderA = statusOrder[a.status] || 5;
+      const orderB = statusOrder[b.status] || 5;
+
+      if (orderA !== orderB) return orderA - orderB;
+
+      // Compare dates descending (newest dates top)
+      const dateCompare = b.date.localeCompare(a.date);
       if (dateCompare !== 0) return dateCompare;
-      return a.time.localeCompare(b.time);
+      return b.time.localeCompare(a.time);
     });
 
+  // Separate active (pending/confirmed) vs history (completed/canceled)
+  const myActiveAppointments = myAppointments.filter(
+    (app) => app.status === "pending" || app.status === "confirmed"
+  );
+  const myHistoryAppointments = myAppointments.filter(
+    (app) => app.status === "completed" || app.status === "canceled"
+  );
+
   // Client cancels their own booking
-  const handleCancelMyBooking = async (id: string) => {
-    if (window.confirm("¿Estás seguro de cancelar tu reserva?")) {
+  const handleCancelMyBooking = async (id: string, dateStr?: string, timeStr?: string) => {
+    const confirmMsg = dateStr && timeStr
+      ? `¿Estás seguro de cancelar tu cita reservada para el ${dateStr} a las ${timeStr}?`
+      : "¿Estás seguro de cancelar tu reserva de peluquería?";
+
+    if (window.confirm(confirmMsg)) {
       try {
         await onUpdateAppointment(id, { status: "canceled" });
       } catch (err) {
@@ -634,7 +779,7 @@ export default function ClientDashboard({
             <Sparkles className="h-3 w-3" />
             <span>Agendamiento Directo</span>
           </div>
-          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight font-sans text-white">
+          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight font-sans text-white text-custom-brand">
             Bienvenido a {config.name}
           </h1>
           <p className="text-xs md:text-sm text-elegant-text-muted max-w-lg">
@@ -749,10 +894,12 @@ export default function ClientDashboard({
                   <div className="flex flex-wrap gap-1.5">
                     {[
                       { id: "all", label: "Todos" },
-                      { id: "cabello", label: "Corte de Cabello" },
-                      { id: "barba", label: "Barbería & Barba" },
-                      { id: "color", label: "Tinte & Color" },
-                      { id: "tratamiento", label: "Tratamientos" },
+                      ...(config.serviceCategories || [
+                        { id: "cabello", name: "Corte de Cabello" },
+                        { id: "barba", name: "Barbería & Barba" },
+                        { id: "color", name: "Tinte & Color" },
+                        { id: "tratamiento", name: "Tratamientos" }
+                      ]).map(c => ({ id: c.id, label: c.name }))
                     ].map((cat) => (
                       <button
                         key={cat.id}
@@ -904,7 +1051,7 @@ export default function ClientDashboard({
                     {/* Fecha de Agendamiento */}
                     <div className="space-y-2">
                       <label className="text-[10px] font-bold text-elegant-text-muted block uppercase">Día Seleccionado:</label>
-                      <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 gap-1.5">
+                      <div className="grid grid-cols-3 xs:grid-cols-4 sm:grid-cols-5 md:grid-cols-7 gap-1.5">
                         {availableDates.map((dateStr) => {
                           const isSelected = selectedDate === dateStr;
                           const label = formatDateLabel(dateStr);
@@ -944,7 +1091,7 @@ export default function ClientDashboard({
                         <span className="text-[9px] text-elegant-text-muted font-medium hidden xs:inline">Los horarios ocupados se deshabilitan automáticamente</span>
                       </div>
                       
-                      <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-1.5 sm:gap-2">
+                      <div className="grid grid-cols-3 xs:grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-1.5 sm:gap-2">
                         {timeSlots.map((timeStr) => {
                           const isBusy = isSlotBusy(selectedDate, timeStr);
                           const isSelected = selectedTime === timeStr;
@@ -1093,6 +1240,35 @@ export default function ClientDashboard({
                       </div>
                     )}
 
+                    {/* Detection of active penalty surcharge */}
+                    {(() => {
+                      const clientPen = (() => {
+                        if (loggedClient && (loggedClient.pendingPenalty || 0) > 0) return loggedClient.pendingPenalty;
+                        if (clientPhone) {
+                          const cleanP = clientPhone.replace(/\D/g, "");
+                          if (cleanP.length >= 7) {
+                            const match = clients.find(c => c.phone && c.phone.replace(/\D/g, "").includes(cleanP.slice(-7)));
+                            if (match && (match.pendingPenalty || 0) > 0) return match.pendingPenalty;
+                          }
+                        }
+                        return 0;
+                      })();
+
+                      if (clientPen <= 0) return null;
+
+                      return (
+                        <div className="bg-rose-950/80 border-2 border-rose-500/80 p-3.5 rounded-2xl text-xs text-rose-100 space-y-1 animate-pulse shadow-lg">
+                          <div className="flex items-center gap-2 font-black text-rose-200 uppercase tracking-wider text-[11px]">
+                            <AlertCircle className="h-4.5 w-4.5 text-rose-300 shrink-0" />
+                            <span>Recargo por Inasistencia Previa Incluido</span>
+                          </div>
+                          <p className="text-[11px] text-rose-200/90 leading-normal">
+                            Se adicionó automáticamente un cobro de recaudo de <strong>{formatPrice(clientPen)}</strong> por inasistencia o cancelación previa sin aviso previo.
+                          </p>
+                        </div>
+                      );
+                    })()}
+
                     {/* Resumen Final */}
                     <div className="bg-elegant-gold/10 border border-elegant-gold/20 p-4 rounded-2xl text-xs space-y-2">
                       <p className="font-bold text-elegant-gold flex items-center gap-1.5">
@@ -1108,35 +1284,53 @@ export default function ClientDashboard({
                       <p className="text-elegant-text">
                         Fecha y Hora: <strong>{formatDateLabel(selectedDate).full}</strong> a las <strong>{selectedTime}</strong>
                       </p>
-                      <p className="text-elegant-text flex items-center flex-wrap gap-1">
-                        Precio a pagar:{" "}
-                        {redeemReward ? (
+                      {(() => {
+                        const clientPen = (() => {
+                          if (loggedClient && (loggedClient.pendingPenalty || 0) > 0) return loggedClient.pendingPenalty;
+                          if (clientPhone) {
+                            const cleanP = clientPhone.replace(/\D/g, "");
+                            if (cleanP.length >= 7) {
+                              const match = clients.find(c => c.phone && c.phone.replace(/\D/g, "").includes(cleanP.slice(-7)));
+                              if (match && (match.pendingPenalty || 0) > 0) return match.pendingPenalty;
+                            }
+                          }
+                          return 0;
+                        })();
+
+                        const basePrice = discountPercent 
+                          ? Math.round(selectedService.price * (1 - discountPercent / 100)) 
+                          : selectedService.price;
+                        
+                        const totalPrice = redeemReward ? clientPen : basePrice + clientPen;
+
+                        return (
                           <>
-                            <span className="line-through text-elegant-text-muted mr-1 font-mono">
-                              {formatPrice(selectedService.price)}
-                            </span>
-                            <strong className="text-emerald-400 font-mono text-sm uppercase">
-                              ¡Gratis! (Canjeando Recompensa)
-                            </strong>
+                            {clientPen > 0 && (
+                              <p className="text-rose-300 font-bold flex justify-between items-center text-xs pt-1 border-t border-rose-900/40">
+                                <span>+ Multa / Recargo Inasistencia Previa:</span>
+                                <span className="font-mono text-rose-200">{formatPrice(clientPen)}</span>
+                              </p>
+                            )}
+                            <p className="text-elegant-text flex items-center flex-wrap gap-1 pt-1 border-t border-elegant-gold/20">
+                              Total a Pagar:{" "}
+                              {redeemReward ? (
+                                <>
+                                  <span className="line-through text-elegant-text-muted mr-1 font-mono">
+                                    {formatPrice(selectedService.price)}
+                                  </span>
+                                  <strong className="text-emerald-400 font-mono text-sm uppercase">
+                                    {clientPen > 0 ? `${formatPrice(totalPrice)} (Servicio Gratis + Multa)` : "¡Gratis! (Canjeando Recompensa)"}
+                                  </strong>
+                                </>
+                              ) : (
+                                <strong className="text-elegant-gold font-mono text-sm">
+                                  {formatPrice(totalPrice)}
+                                </strong>
+                              )}
+                            </p>
                           </>
-                        ) : discountPercent ? (
-                          <>
-                            <span className="line-through text-elegant-text-muted mr-1 font-mono">
-                              {formatPrice(selectedService.price)}
-                            </span>
-                            <strong className="text-emerald-400 font-mono text-sm">
-                              {formatPrice(Math.round(selectedService.price * (1 - discountPercent / 100)))}
-                            </strong>
-                            <span className="bg-emerald-950 text-emerald-400 border border-emerald-800 text-[9px] font-extrabold px-1.5 py-0.5 rounded-full uppercase ml-1 animate-pulse">
-                              {discountPercent}% OFF
-                            </span>
-                          </>
-                        ) : (
-                          <strong className="text-elegant-gold font-mono text-sm">
-                            {formatPrice(selectedService.price)}
-                          </strong>
-                        )}
-                      </p>
+                        );
+                      })()}
                     </div>
 
                     <button
@@ -1287,94 +1481,212 @@ export default function ClientDashboard({
             <div className="border-b border-elegant-border pb-3">
               <h3 className="text-sm font-bold text-white font-sans flex items-center gap-1.5">
                 <CalendarIcon className="h-4.5 w-4.5 text-elegant-gold" />
-                Mis Citas Reservadas
+                Mis Citas & Historial
               </h3>
-              <p className="text-[11px] text-elegant-text-muted">Verifica el estado de tus citas en tiempo real.</p>
+              <p className="text-[11px] text-elegant-text-muted">Consulta tus citas pendientes o explora tu historial de servicios.</p>
             </div>
 
-            {myAppointments.length === 0 ? (
-              <div className="py-8 text-center text-elegant-text-muted space-y-2 border border-dashed border-elegant-border rounded-2xl">
-                <HelpCircle className="h-7 w-7 mx-auto stroke-1" />
-                <p className="text-xs">No tienes citas registradas en este dispositivo.</p>
+            {/* Sincronizador / Buscador por Teléfono */}
+            <div className="bg-elegant-sub/60 border border-elegant-border p-3 rounded-2xl space-y-1.5">
+              <label className="text-[10px] font-extrabold text-elegant-gold uppercase tracking-wider flex items-center gap-1">
+                <Phone className="h-3 w-3" />
+                Sincronizar Citas por Celular
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={searchPhone}
+                  onChange={(e) => {
+                    setSearchPhone(e.target.value);
+                    localStorage.setItem("bella_barba_last_phone", e.target.value);
+                  }}
+                  placeholder="Tu número de celular..."
+                  className="w-full bg-elegant-bg border border-elegant-border rounded-xl px-3 py-1.5 text-xs text-white placeholder-neutral-500 font-mono focus:outline-none focus:border-elegant-gold"
+                />
               </div>
-            ) : (
-              <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
-                {myAppointments.map((app) => {
-                  return (
-                    <div
-                      key={app.id}
-                      className={`border rounded-xl p-3.5 space-y-2 text-xs bg-elegant-sub transition-all ${
-                        app.status === "completed" ? "border-blue-900/40 bg-blue-950/10" :
-                        app.status === "confirmed" ? "border-emerald-900/40 bg-emerald-950/10" :
-                        app.status === "canceled" ? "border-rose-900/40 bg-rose-950/10 opacity-70" :
-                        "border-amber-900/40 bg-amber-950/10"
-                      }`}
-                    >
-                      {/* Cabecera cita: Status */}
-                      <div className="flex justify-between items-center gap-2">
-                        <span className="font-mono font-bold text-white bg-elegant-card px-1.5 py-0.5 rounded-md border border-elegant-border">
-                          {app.time}
-                        </span>
+              <p className="text-[9px] text-elegant-text-muted leading-tight">
+                Ingresa tu celular para ver automáticamente tus reservas activas e historial.
+              </p>
+            </div>
 
-                        {app.status === "pending" && (
-                          <span className="bg-amber-950/50 text-amber-400 border border-amber-800/40 text-[9px] font-bold px-2 py-0.5 rounded-full animate-pulse uppercase">
-                            Esperando Aprobación
-                          </span>
-                        )}
-                        {app.status === "confirmed" && (
-                          <span className="bg-emerald-950/50 text-emerald-400 border border-emerald-800/40 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase flex items-center gap-0.5">
-                            ¡Confirmada!
-                          </span>
-                        )}
-                        {app.status === "completed" && (
-                          <span className="bg-blue-950/50 text-blue-400 border border-blue-800/40 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">
-                            Servicio Realizado
-                          </span>
-                        )}
-                        {app.status === "canceled" && (
-                          <span className="bg-rose-950/50 text-rose-400 border border-rose-800/40 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">
-                            Cancelado
-                          </span>
-                        )}
-                      </div>
+            {/* Tabs de Selección: Citas Pendientes vs Historial */}
+            <div className="flex bg-black/40 p-1 rounded-2xl border border-elegant-border gap-1">
+              <button
+                onClick={() => setAppointmentsTab("active")}
+                className={`flex-1 py-1.5 px-2 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                  appointmentsTab === "active"
+                    ? "bg-amber-500 text-black font-extrabold shadow-sm"
+                    : "text-neutral-400 hover:text-white"
+                }`}
+              >
+                <Clock className="h-3.5 w-3.5" />
+                <span>Pendientes</span>
+                <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-mono ${
+                  appointmentsTab === "active" ? "bg-black/30 text-black font-extrabold" : "bg-amber-500/20 text-amber-300"
+                }`}>
+                  {myActiveAppointments.length}
+                </span>
+              </button>
 
-                      {/* Info de servicio */}
-                      <div>
-                        <p className="font-bold text-white text-xs">{app.serviceName}</p>
-                        <p className="text-[10px] text-elegant-gold font-semibold mt-0.5">
-                          Peluquero: {app.barberName || "Cualquier Barbero"}
-                        </p>
-                        <p className="text-[10px] text-elegant-text-muted mt-0.5">
-                          {formatDateLabel(app.date).full} • {app.duration} mins
-                        </p>
-                      </div>
+              <button
+                onClick={() => setAppointmentsTab("history")}
+                className={`flex-1 py-1.5 px-2 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                  appointmentsTab === "history"
+                    ? "bg-amber-500 text-black font-extrabold shadow-sm"
+                    : "text-neutral-400 hover:text-white"
+                }`}
+              >
+                <History className="h-3.5 w-3.5" />
+                <span>Historial</span>
+                <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-mono ${
+                  appointmentsTab === "history" ? "bg-black/30 text-black font-extrabold" : "bg-neutral-800 text-neutral-300"
+                }`}>
+                  {myHistoryAppointments.length}
+                </span>
+              </button>
+            </div>
 
-                      {/* Precio */}
-                      <div className="flex justify-between items-center pt-2 border-t border-elegant-border">
-                        <span className="text-elegant-text-muted text-[10px]">A pagar: <strong className="text-elegant-gold font-mono">{formatPrice(app.price)}</strong></span>
-                        
-                        {/* Cancel button */}
-                        {app.status === "pending" || app.status === "confirmed" ? (
-                          <button
-                            onClick={() => handleCancelMyBooking(app.id)}
-                            className="text-rose-400 hover:text-rose-300 font-bold text-[10px] flex items-center gap-0.5 cursor-pointer hover:underline"
-                          >
-                            <XCircle className="h-3 w-3" />
-                            Cancelar Turno
-                          </button>
-                        ) : null}
-                      </div>
+            {/* TAB CONTENT 1: CITAS PENDIENTES */}
+            {appointmentsTab === "active" && (
+              <div>
+                {myActiveAppointments.length === 0 ? (
+                  <div className="py-8 text-center text-elegant-text-muted space-y-2 border border-dashed border-elegant-border rounded-2xl">
+                    <HelpCircle className="h-7 w-7 mx-auto stroke-1 text-amber-400/60" />
+                    <p className="text-xs text-white font-medium">No tienes citas pendientes agendadas.</p>
+                    <p className="text-[10px] text-neutral-400 max-w-[220px] mx-auto">
+                      Las reservas activas o agendadas automáticamente aparecerán aquí para que puedas gestionarlas.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                    {myActiveAppointments.map((app) => (
+                      <div
+                        key={app.id}
+                        className={`border rounded-2xl p-3.5 space-y-2.5 text-xs bg-elegant-sub transition-all ${
+                          app.status === "confirmed" ? "border-emerald-900/50 bg-emerald-950/20" : "border-amber-900/50 bg-amber-950/20"
+                        }`}
+                      >
+                        {/* Cabecera cita: Status */}
+                        <div className="flex justify-between items-center gap-2">
+                          <span className="font-mono font-bold text-white bg-elegant-card px-2 py-0.5 rounded-lg border border-elegant-border text-xs">
+                            {app.time}
+                          </span>
 
-                      {/* Hairdresser Notes Feedback */}
-                      {app.hairdresserNotes && app.status === "completed" && (
-                        <div className="mt-1 bg-blue-950/20 p-2 rounded-lg text-[10px] border border-blue-900/40 text-blue-300">
-                          <span className="font-bold text-blue-400 block">Fórmula de Peluquero guardada:</span>
-                          "{app.hairdresserNotes}"
+                          {app.status === "pending" && (
+                            <span className="bg-amber-950/60 text-amber-300 border border-amber-700/50 text-[9px] font-extrabold px-2 py-0.5 rounded-full animate-pulse uppercase">
+                              Esperando Aprobación
+                            </span>
+                          )}
+                          {app.status === "confirmed" && (
+                            <span className="bg-emerald-950/60 text-emerald-300 border border-emerald-700/50 text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                              ¡Cita Confirmada!
+                            </span>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
+
+                        {/* Info de servicio */}
+                        <div className="space-y-0.5">
+                          <p className="font-bold text-white text-xs">{app.serviceName}</p>
+                          <p className="text-[10px] text-elegant-gold font-semibold">
+                            Peluquero: {app.barberName || "Cualquier Barbero"}
+                          </p>
+                          <p className="text-[10px] text-elegant-text-muted font-mono">
+                            {formatDateLabel(app.date).full} • {app.duration} mins
+                          </p>
+                          {app.notes && app.notes.includes("Agendado automáticamente") && (
+                            <p className="text-[9px] bg-amber-500/10 border border-amber-500/20 text-amber-300 px-2 py-0.5 rounded-md mt-1 inline-block font-mono">
+                              ⚡ Agendamiento por Ciclo Habitual
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Precio y Botón de Cancelación */}
+                        <div className="flex justify-between items-center pt-2 border-t border-elegant-border/60">
+                          <span className="text-elegant-text-muted text-[10px]">
+                            A pagar: <strong className="text-elegant-gold font-mono text-xs">{formatPrice(app.price)}</strong>
+                          </span>
+                          
+                          <button
+                            onClick={() => handleCancelMyBooking(app.id, formatDateLabel(app.date).full, app.time)}
+                            className="bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800/60 text-rose-300 font-extrabold text-[10px] px-2.5 py-1 rounded-xl flex items-center gap-1 transition-all cursor-pointer shadow-sm active:scale-95"
+                            title="Cancelar cita"
+                          >
+                            <XCircle className="h-3.5 w-3.5 text-rose-400 shrink-0" />
+                            <span>Cancelar Cita</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB CONTENT 2: HISTORIAL DE CITAS */}
+            {appointmentsTab === "history" && (
+              <div>
+                {myHistoryAppointments.length === 0 ? (
+                  <div className="py-8 text-center text-elegant-text-muted space-y-2 border border-dashed border-elegant-border rounded-2xl">
+                    <History className="h-7 w-7 mx-auto stroke-1 text-neutral-500" />
+                    <p className="text-xs text-white font-medium">Aún no tienes historial de citas realizadas o canceladas.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                    {myHistoryAppointments.map((app) => (
+                      <div
+                        key={app.id}
+                        className={`border rounded-2xl p-3.5 space-y-2 text-xs bg-elegant-sub/60 transition-all ${
+                          app.status === "completed" ? "border-blue-900/40 bg-blue-950/10" : "border-rose-900/40 bg-rose-950/10 opacity-75"
+                        }`}
+                      >
+                        {/* Cabecera status */}
+                        <div className="flex justify-between items-center gap-2">
+                          <span className="font-mono font-bold text-neutral-300 bg-black/40 px-2 py-0.5 rounded-lg border border-elegant-border text-[11px]">
+                            {app.time}
+                          </span>
+
+                          {app.status === "completed" && (
+                            <span className="bg-blue-950/50 text-blue-300 border border-blue-800/40 text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase">
+                              Servicio Realizado
+                            </span>
+                          )}
+                          {app.status === "canceled" && (
+                            <span className="bg-rose-950/50 text-rose-300 border border-rose-800/40 text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase">
+                              Cancelado
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Info de servicio */}
+                        <div className="space-y-0.5">
+                          <p className="font-bold text-white text-xs">{app.serviceName}</p>
+                          <p className="text-[10px] text-elegant-gold font-semibold">
+                            Peluquero: {app.barberName || "Cualquier Barbero"}
+                          </p>
+                          <p className="text-[10px] text-elegant-text-muted font-mono">
+                            {formatDateLabel(app.date).full} • {app.duration} mins
+                          </p>
+                        </div>
+
+                        {/* Precio */}
+                        <div className="flex justify-between items-center pt-2 border-t border-elegant-border/60">
+                          <span className="text-elegant-text-muted text-[10px]">
+                            Monto: <strong className="text-elegant-gold font-mono text-xs">{formatPrice(app.price)}</strong>
+                          </span>
+                        </div>
+
+                        {/* Hairdresser Notes Feedback */}
+                        {app.hairdresserNotes && app.status === "completed" && (
+                          <div className="mt-1 bg-blue-950/30 p-2 rounded-lg text-[10px] border border-blue-800/40 text-blue-300">
+                            <span className="font-bold text-blue-400 block">Fórmula de Peluquero:</span>
+                            "{app.hairdresserNotes}"
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1659,10 +1971,13 @@ export default function ClientDashboard({
                 )}
               </div>
 
-              {/* My active client portal bookings */}
+              {/* My active client portal bookings & history */}
               <div className="space-y-3 pt-2">
                 <div className="flex justify-between items-center border-b border-elegant-border pb-2">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-elegant-text-muted">Mis Próximos Turnos Agendados</h4>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-elegant-text-muted flex items-center gap-1.5">
+                    <History className="h-3.5 w-3.5 text-amber-400" />
+                    Historial y Próximos Turnos
+                  </h4>
                   <span className="text-[10px] font-mono text-elegant-text-muted">Asociados a tu cuenta</span>
                 </div>
 
@@ -1671,55 +1986,91 @@ export default function ClientDashboard({
                   const myUserAppointments = appointments.filter(
                     app => app.clientPhone === loggedClient.phone || (loggedClient.email && app.clientEmail?.toLowerCase() === loggedClient.email.toLowerCase())
                   ).sort((a, b) => {
-                    const dComp = a.date.localeCompare(b.date);
+                    const dComp = b.date.localeCompare(a.date);
                     if (dComp !== 0) return dComp;
-                    return a.time.localeCompare(b.time);
+                    return b.time.localeCompare(a.time);
                   });
+
+                  const activeUserApps = myUserAppointments.filter(a => a.status === "pending" || a.status === "confirmed");
+                  const historyUserApps = myUserAppointments.filter(a => a.status === "completed" || a.status === "canceled");
 
                   if (myUserAppointments.length === 0) {
                     return (
                       <div className="py-6 text-center text-elegant-text-muted text-xs border border-dashed border-elegant-border rounded-2xl">
-                        Aún no tienes turnos reservados con esta cuenta.
+                        Aún no tienes turnos registrados con esta cuenta.
                       </div>
                     );
                   }
 
                   return (
-                    <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-                      {myUserAppointments.map(app => (
-                        <div key={app.id} className="p-3 bg-elegant-sub border border-elegant-border rounded-xl flex items-center justify-between text-xs">
-                          <div className="space-y-1">
-                            <p className="font-bold text-white">{app.serviceName}</p>
-                            <p className="text-[10px] text-elegant-text-muted">
-                              {formatDateLabel(app.date).full} • {app.time} • {app.barberName}
-                            </p>
-                            <span className="text-[10px] text-elegant-gold font-semibold">Total pagado: {formatPrice(app.price)}</span>
-                          </div>
-                          
-                          <div>
-                            {app.status === "pending" && (
-                              <span className="bg-amber-950/50 text-amber-400 border border-amber-800/40 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase animate-pulse">
-                                Pendiente
-                              </span>
-                            )}
-                            {app.status === "confirmed" && (
-                              <span className="bg-emerald-950/50 text-emerald-400 border border-emerald-800/40 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">
-                                Confirmada
-                              </span>
-                            )}
-                            {app.status === "completed" && (
-                              <span className="bg-blue-950/50 text-blue-400 border border-blue-800/40 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">
-                                Realizada
-                              </span>
-                            )}
-                            {app.status === "canceled" && (
-                              <span className="bg-rose-950/50 text-rose-400 border border-rose-800/40 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">
-                                Cancelada
-                              </span>
-                            )}
+                    <div className="space-y-4 max-h-[350px] overflow-y-auto pr-1">
+                      {/* Section: Próximos Turnos */}
+                      {activeUserApps.length > 0 && (
+                        <div className="space-y-2">
+                          <span className="text-[10px] font-extrabold text-amber-400 uppercase tracking-wider block">
+                            ⚡ Próximos Turnos ({activeUserApps.length})
+                          </span>
+                          <div className="space-y-2">
+                            {activeUserApps.map(app => (
+                              <div key={app.id} className="p-3 bg-elegant-sub border border-amber-500/30 rounded-xl flex items-center justify-between text-xs">
+                                <div className="space-y-1">
+                                  <p className="font-bold text-white">{app.serviceName}</p>
+                                  <p className="text-[10px] text-elegant-text-muted">
+                                    {formatDateLabel(app.date).full} • {app.time} • {app.barberName}
+                                  </p>
+                                  <span className="text-[10px] text-elegant-gold font-semibold">A pagar: {formatPrice(app.price)}</span>
+                                </div>
+                                <div>
+                                  {app.status === "pending" && (
+                                    <span className="bg-amber-950/50 text-amber-400 border border-amber-800/40 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase animate-pulse">
+                                      Pendiente
+                                    </span>
+                                  )}
+                                  {app.status === "confirmed" && (
+                                    <span className="bg-emerald-950/50 text-emerald-400 border border-emerald-800/40 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">
+                                      ¡Confirmada!
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
-                      ))}
+                      )}
+
+                      {/* Section: Historial de Servicios */}
+                      {historyUserApps.length > 0 && (
+                        <div className="space-y-2 pt-1 border-t border-elegant-border/50">
+                          <span className="text-[10px] font-extrabold text-neutral-400 uppercase tracking-wider block">
+                            📜 Historial de Citas ({historyUserApps.length})
+                          </span>
+                          <div className="space-y-2">
+                            {historyUserApps.map(app => (
+                              <div key={app.id} className="p-3 bg-elegant-sub/50 border border-elegant-border rounded-xl flex items-center justify-between text-xs opacity-90">
+                                <div className="space-y-1">
+                                  <p className="font-bold text-white">{app.serviceName}</p>
+                                  <p className="text-[10px] text-elegant-text-muted">
+                                    {formatDateLabel(app.date).full} • {app.time} • {app.barberName}
+                                  </p>
+                                  <span className="text-[10px] text-elegant-gold font-semibold">Monto: {formatPrice(app.price)}</span>
+                                </div>
+                                <div>
+                                  {app.status === "completed" && (
+                                    <span className="bg-blue-950/50 text-blue-400 border border-blue-800/40 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">
+                                      Realizada
+                                    </span>
+                                  )}
+                                  {app.status === "canceled" && (
+                                    <span className="bg-rose-950/50 text-rose-400 border border-rose-800/40 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">
+                                      Cancelada
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })()}

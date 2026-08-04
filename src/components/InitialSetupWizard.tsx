@@ -292,15 +292,15 @@ export default function InitialSetupWizard({
                 {/* Días laborables */}
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Días de Atención Semanal</label>
-                  <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
+                  <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5 sm:gap-2">
                     {[
-                      { id: 1, label: "Lunes" },
-                      { id: 2, label: "Martes" },
-                      { id: 3, label: "Miércoles" },
-                      { id: 4, label: "Jueves" },
-                      { id: 5, label: "Viernes" },
-                      { id: 6, label: "Sábado" },
-                      { id: 0, label: "Domingo" },
+                      { id: 1, label: "Lun" },
+                      { id: 2, label: "Mar" },
+                      { id: 3, label: "Mié" },
+                      { id: 4, label: "Jue" },
+                      { id: 5, label: "Vie" },
+                      { id: 6, label: "Sáb" },
+                      { id: 0, label: "Dom" },
                     ].map((day) => {
                       const isSelected = workingDays.includes(day.id);
                       return (
@@ -411,7 +411,7 @@ export default function InitialSetupWizard({
 
                     <button
                       type="submit"
-                      className="w-full py-2 bg-elegant-gold hover:bg-amber-500 text-elegant-bg font-extrabold rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                      className="w-full py-2 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg font-extrabold rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
                     >
                       <Plus className="h-3.5 w-3.5" />
                       Añadir al Catálogo
@@ -540,7 +540,7 @@ export default function InitialSetupWizard({
 
                     <button
                       type="submit"
-                      className="w-full py-2 bg-elegant-gold hover:bg-amber-500 text-elegant-bg font-extrabold rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                      className="w-full py-2 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg font-extrabold rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
                     >
                       <Plus className="h-3.5 w-3.5" />
                       Registrar en Plantilla
@@ -611,7 +611,7 @@ export default function InitialSetupWizard({
           {step < 3 ? (
             <button
               onClick={() => { setError(""); setStep(step + 1); }}
-              className="px-4 py-2 bg-elegant-gold hover:bg-amber-500 text-elegant-bg rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-all"
+              className="px-4 py-2 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-all"
             >
               <span>Continuar</span>
               <ChevronRight className="h-4 w-4" />

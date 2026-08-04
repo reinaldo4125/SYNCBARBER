@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Appointment, Service, SalonConfig, Barber, MembershipPlan, BarberReview, ClientAccount } from "./types";
+import { Appointment, Service, SalonConfig, Barber, MembershipPlan, BarberReview, ClientAccount, InventoryItem, ProductSale } from "./types";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Scissors, 
@@ -16,7 +16,10 @@ import {
   Share2,
   Users,
   Coins,
-  Cpu
+  Cpu,
+  Linkedin,
+  Package,
+  Wine
 } from "lucide-react";
 import ClientDashboard from "./components/ClientDashboard";
 import AdminDashboard from "./components/AdminDashboard";
@@ -30,6 +33,12 @@ import LockedModule from "./components/LockedModule";
 import DeveloperPanel from "./components/DeveloperPanel";
 import SyncBarberLogo from "./components/SyncBarberLogo";
 import InitialSetupWizard from "./components/InitialSetupWizard";
+import DemoCenter from "./components/DemoCenter";
+import SyncBarberMarketing from "./components/SyncBarberMarketing";
+import InventoryManager from "./components/InventoryManager";
+import ModoSillaPWA from "./components/ModoSillaPWA";
+import ModoKiosco from "./components/ModoKiosco";
+import CierreCajaModal from "./components/CierreCajaModal";
 
 interface RealTimeToast {
   id: string;
@@ -78,13 +87,64 @@ try {
 
 export default function App() {
   // Application Roles
-  const [currentRole, setCurrentRole] = useState<"client" | "admin" | "barber" | "login" | "developer">("client");
+  const [currentRole, setCurrentRole] = useState<"client" | "admin" | "barber" | "login" | "developer" | "syncbarber" | "syncbarber">(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlSalonId = params.get("salonId") || params.get("salon_id");
+    const activeId = urlSalonId || localStorage.getItem("active_tenant_id") || "bella-barba";
+    return activeId !== "bella-barba" ? "client" : "syncbarber";
+  });
+  const [isDevUnlocked, setIsDevUnlocked] = useState(false);
+  const [devError, setDevError] = useState("");
   const [adminTab, setAdminTab] = useState<"agenda" | "calendar" | "commissions" | "settings" | "barbers" | "clients">("agenda");
   const [loggedUser, setLoggedUser] = useState<{ id: string; name: string; username: string; role: 'admin' | 'barber'; barberId?: string; salonId?: string } | null>(null);
+  const [isModoSillaActive, setIsModoSillaActive] = useState<boolean>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("mode") === "silla" || params.get("pwa") === "1";
+  });
+  const [showKioscoModal, setShowKioscoModal] = useState<boolean>(false);
+  const [showCierreCajaModal, setShowCierreCajaModal] = useState<boolean>(false);
 
   const [activeTenantId, setActiveTenantId] = useState<string>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlSalonId = params.get("salonId") || params.get("salon_id");
+    if (urlSalonId) {
+      localStorage.setItem("active_tenant_id", urlSalonId);
+      return urlSalonId;
+    }
     return localStorage.getItem("active_tenant_id") || "bella-barba";
   });
+
+  // Synchronize activeTenantId with URL query params to preserve it across page refreshes
+  useEffect(() => {
+    if (activeTenantId) {
+      const params = new URLSearchParams(window.location.search);
+      const urlSalonId = params.get("salonId") || params.get("salon_id");
+      
+      if (activeTenantId !== "bella-barba") {
+        if (urlSalonId !== activeTenantId) {
+          params.set("salonId", activeTenantId);
+          const newUrl = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
+          window.history.replaceState(null, "", newUrl);
+        }
+      } else if (urlSalonId && currentRole === "syncbarber") {
+        // Clean up the URL for the landing page of the demo tenant
+        params.delete("salonId");
+        params.delete("salon_id");
+        const newSearch = params.toString();
+        const newUrl = newSearch 
+          ? `${window.location.pathname}?${newSearch}${window.location.hash}`
+          : `${window.location.pathname}${window.location.hash}`;
+        window.history.replaceState(null, "", newUrl);
+      }
+    }
+  }, [activeTenantId, currentRole]);
+
+  // If activeTenantId changes to a custom barberia, automatically transition from marketing view to client view
+  useEffect(() => {
+    if (activeTenantId !== "bella-barba" && currentRole === "syncbarber") {
+      setCurrentRole("client");
+    }
+  }, [activeTenantId, currentRole]);
 
   // Core synchronized State from Server
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -93,6 +153,9 @@ export default function App() {
   const [memberships, setMemberships] = useState<MembershipPlan[]>([]);
   const [reviews, setReviews] = useState<BarberReview[]>([]);
   const [clients, setClients] = useState<ClientAccount[]>([]);
+  const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [sales, setSales] = useState<ProductSale[]>([]);
   const [config, setConfig] = useState<SalonConfig>({
     name: "Cargando...",
     openTime: "09:00",
@@ -163,6 +226,22 @@ export default function App() {
 
   // Server-Sent Events (SSE) Real-Time Listener
   useEffect(() => {
+    // Clear state when activeTenantId changes to prevent stale data leaking
+    setIsLoading(true);
+    setAppointments([]);
+    setServices([]);
+    setBarbers([]);
+    setClients([]);
+    setReviews([]);
+    setConfig({
+      name: "Cargando...",
+      openTime: "09:00",
+      closeTime: "19:00",
+      workingDays: [1, 2, 3, 4, 5, 6],
+      intervalMinutes: 30,
+      needsSetup: false, // Temporarily false until real configuration is fetched
+    });
+
     let eventSource: EventSource | null = null;
     let retryInterval: any = null;
     let lastSseFailureTime = 0;
@@ -200,6 +279,18 @@ export default function App() {
             if (data.memberships) setMemberships(data.memberships);
             if (data.reviews) setReviews(data.reviews);
             if (data.clients) setClients(data.clients);
+            if (data.announcements) setAnnouncements(data.announcements);
+            if (data.inventory) setInventory(data.inventory);
+            if (data.sales) setSales(data.sales);
+          } else if (type === "inventory_update") {
+            setInventory(data);
+          } else if (type === "sales_update") {
+            setSales(data);
+          } else if (type === "announcement_new") {
+            setAnnouncements((prev) => [data, ...prev]);
+            triggerToast("📢 Nuevo Anuncio Global", `${data.title}: ${data.message}`, "info");
+          } else if (type === "announcements_list") {
+            setAnnouncements(data);
           } else if (type === "reviews_update") {
             setReviews(data);
           } else if (type === "clients_list_update") {
@@ -265,50 +356,42 @@ export default function App() {
           eventSource = null;
         }
         
-        // Start checking fallback status with standard fetch polling
+        // Start checking fallback status with standard fetch polling (15s interval)
         if (!retryInterval) {
           retryInterval = setInterval(() => {
             fetchStateFallback();
-          }, 4000);
+          }, 15000);
         }
       };
     };
 
-    // Fallback polling in case SSE breaks or is blocked by specific firewall setups
+    // Fallback polling using single consolidated endpoint
     const fetchStateFallback = async () => {
       try {
-        const [appRes, servRes, confRes, barbRes, membRes, revRes, cliRes] = await Promise.all([
-          fetch("/api/appointments"),
-          fetch("/api/services"),
-          fetch("/api/config"),
-          fetch("/api/barbers"),
-          fetch("/api/memberships"),
-          fetch("/api/reviews"),
-          fetch("/api/clients"),
-        ]);
-        if (appRes.ok && servRes.ok && confRes.ok && barbRes.ok && membRes.ok && revRes.ok && cliRes.ok) {
-          const apps = await appRes.json();
-          const servs = await servRes.json();
-          const conf = await confRes.json();
-          const barbs = await barbRes.json();
-          const membs = await membRes.json();
-          const revs = await revRes.json();
-          const clis = await cliRes.json();
-          
-          setAppointments(apps);
-          setServices(servs);
-          setConfig(conf);
-          setBarbers(barbs);
-          setMemberships(membs);
-          setReviews(revs);
-          setClients(clis);
+        const currentActiveTenant = localStorage.getItem("active_tenant_id") || "bella-barba";
+        const fallbackHeaders = { "x-tenant-id": currentActiveTenant };
+        
+        const stateRes = await fetch("/api/state", { headers: fallbackHeaders });
+        if (stateRes.ok) {
+          const data = await stateRes.json();
+          if (data.appointments) setAppointments(data.appointments);
+          if (data.services) setServices(data.services);
+          if (data.config) setConfig(data.config);
+          if (data.barbers) setBarbers(data.barbers);
+          if (data.memberships) setMemberships(data.memberships);
+          if (data.reviews) setReviews(data.reviews);
+          if (data.clients) setClients(data.clients);
+          if (data.announcements) setAnnouncements(data.announcements);
+          if (data.inventory) setInventory(data.inventory);
+          if (data.sales) setSales(data.sales);
+
           setIsConnected(true);
           setIsLoading(false);
           setErrorText("");
           
-          // Try reconnecting SSE only if at least 20 seconds have passed since last failure
+          // Try reconnecting SSE only if at least 25 seconds have passed since last failure
           const timeSinceLastFailure = Date.now() - lastSseFailureTime;
-          if (timeSinceLastFailure > 20000) {
+          if (timeSinceLastFailure > 25000) {
             if (!eventSource || eventSource.readyState === EventSource.CLOSED) {
               connectSSE();
             }
@@ -317,7 +400,7 @@ export default function App() {
           throw new Error("Respuesta no satisfactoria del servidor");
         }
       } catch (err) {
-        console.error("Fallback fetch failed:", err);
+        console.warn("Aviso: Fallback fetch no disponible temporalmente (servidor reiniciando o canal inactivo):", err);
         setIsConnected(false);
         setErrorText("Conexión inestable con el servidor de la peluquería...");
       }
@@ -342,6 +425,54 @@ export default function App() {
       clearTimeout(timeout);
     };
   }, [activeTenantId]);
+
+  const fetchInitialData = async () => {
+    try {
+      const currentActiveTenant = localStorage.getItem("active_tenant_id") || "bella-barba";
+      const fallbackHeaders = { "x-tenant-id": currentActiveTenant };
+      const stateRes = await fetch("/api/state", { headers: fallbackHeaders });
+      if (stateRes.ok) {
+        const data = await stateRes.json();
+        if (data.appointments) setAppointments(data.appointments);
+        if (data.services) setServices(data.services);
+        if (data.config) setConfig(data.config);
+        if (data.barbers) setBarbers(data.barbers);
+        if (data.memberships) setMemberships(data.memberships);
+        if (data.reviews) setReviews(data.reviews);
+        if (data.clients) setClients(data.clients);
+        if (data.announcements) setAnnouncements(data.announcements);
+        if (data.inventory) setInventory(data.inventory);
+        if (data.sales) setSales(data.sales);
+      }
+    } catch (err) {
+      console.warn("Error re-fetching data:", err);
+    }
+  };
+
+  // Automatically load active tenant and role if specified in the URL query string (QR scans)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlSalonId = params.get("salonId") || params.get("salon_id");
+    const urlBarberId = params.get("barber") || params.get("barberId");
+    
+    if (urlSalonId) {
+      console.log("[Query Params] Scanning QR code! Switching tenant to:", urlSalonId);
+      localStorage.setItem("active_tenant_id", urlSalonId);
+      setActiveTenantId(urlSalonId);
+      setCurrentRole("client"); // Route directly to Client booking screen
+      
+      if (urlBarberId) {
+        console.log("[Query Params] Direct booking barber selected:", urlBarberId);
+        localStorage.setItem("direct_barber_id", urlBarberId);
+      }
+      
+      triggerToast(
+        "Escaneo Exitoso", 
+        `Bienvenido a la plataforma de reservas de tu barbería.`, 
+        "success"
+      );
+    }
+  }, []);
 
   // REST Mutations Helpers
   const handleUpdateAppointment = async (id: string, updates: Partial<Appointment>) => {
@@ -539,7 +670,29 @@ export default function App() {
         const errData = await res.json();
         throw new Error(errData.error || "Error al actualizar el cliente.");
       }
-      return await res.json();
+      const data = await res.json();
+      const updatedClient = data.client || data;
+
+      if (updatedClient && updatedClient.id) {
+        setClients((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, ...updatedClient } : c))
+        );
+
+        try {
+          const storedClientStr = localStorage.getItem("bella_barba_logged_client") || localStorage.getItem("logged_client");
+          if (storedClientStr) {
+            const storedClient = JSON.parse(storedClientStr);
+            if (storedClient && storedClient.id === id) {
+              const merged = { ...storedClient, ...updatedClient };
+              localStorage.setItem("bella_barba_logged_client", JSON.stringify(merged));
+              localStorage.setItem("logged_client", JSON.stringify(merged));
+            }
+          }
+        } catch (e) {
+          console.error("Error updating local stored client:", e);
+        }
+      }
+      return data;
     } catch (e) {
       console.error(e);
       throw e;
@@ -619,6 +772,29 @@ export default function App() {
     }).format(price);
   };
 
+  // Dynamic branding colors helper
+  const getBrandColors = () => {
+    switch (config.accentColor) {
+      case "cyan":
+        return { primary: "#06b6d4", hover: "#0891b2" };
+      case "emerald":
+        return { primary: "#10b981", hover: "#059669" };
+      case "blue":
+        return { primary: "#3b82f6", hover: "#2563eb" };
+      case "violet":
+        return { primary: "#8b5cf6", hover: "#7c3aed" };
+      case "rose":
+        return { primary: "#f43f5e", hover: "#e11d48" };
+      case "amber":
+        return { primary: "#f59e0b", hover: "#d97706" };
+      case "gold":
+      default:
+        return { primary: "#C5A267", hover: "#B38E54" };
+    }
+  };
+
+  const brandColors = getBrandColors();
+
   // Open multi-window test warning helper
   const openDuplicateTab = () => {
     window.open(window.location.href, "_blank");
@@ -626,61 +802,99 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-elegant-bg text-elegant-text font-sans flex flex-col antialiased">
+      {/* Estilos dinámicos de marca del inquilino */}
+      <style>{`
+        :root {
+          --color-elegant-gold: ${brandColors.primary} !important;
+          --color-elegant-gold-hover: ${brandColors.hover} !important;
+          --color-elegant-text-custom: ${config.textColor || "#FFFFFF"} !important;
+          --color-elegant-bg: ${config.backgroundColor || "#060A13"} !important;
+          --color-elegant-card: ${config.cardColor || "#0E1524"} !important;
+          --color-elegant-sub: ${config.subCardColor || "#162237"} !important;
+          --color-elegant-border: ${config.borderColor || "#1F314D"} !important;
+        }
+        .text-custom-brand {
+          color: var(--color-elegant-text-custom) !important;
+        }
+      `}</style>
       
       {/* 1. Header Superior & Switch de Roles */}
-      <header className="sticky top-0 z-40 w-full bg-elegant-card/95 backdrop-blur-md border-b border-elegant-border shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between gap-4">
+      <header className="sticky top-0 z-40 w-full bg-elegant-card/95 backdrop-blur-md border-b border-elegant-border shadow-md">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:h-16 flex flex-col md:flex-row items-center justify-between gap-3 md:gap-4">
           
           {/* Logo SYNCBARBER & Salon Info */}
-          <div className="flex items-center space-x-3 shrink-0">
-            <SyncBarberLogo size={38} showText={true} />
-            <div className="h-8 w-[1px] bg-elegant-border hidden xs:block" />
-            <div className="flex flex-col">
-              {loggedUser ? (
-                <span className="font-extrabold text-xs sm:text-sm md:text-base tracking-tight text-white font-sans block max-w-[90px] xs:max-w-[140px] sm:max-w-none truncate">
-                  {config.name || "Cargando..."}
-                </span>
-              ) : (
-                <select
-                  value={activeTenantId}
-                  onChange={(e) => {
-                    const nextTenant = e.target.value;
-                    setActiveTenantId(nextTenant);
-                    localStorage.setItem("active_tenant_id", nextTenant);
-                    triggerToast(
-                      "Cambiando Salón",
-                      `Cargando información de ${
-                        nextTenant === "bella-barba"
-                          ? "Bella & Barba Studio"
-                          : nextTenant === "el-figaro"
-                          ? "Peluquería El Fígaro"
-                          : "Estilo & Tijera"
-                      }`,
-                      "info"
-                    );
-                  }}
-                  className="bg-elegant-sub border border-elegant-border text-white text-[10px] sm:text-xs font-bold rounded-lg px-2 py-0.5 focus:outline-none focus:border-elegant-gold cursor-pointer font-sans"
-                >
-                  <option value="bella-barba">Bella & Barba Studio</option>
-                  <option value="el-figaro">Peluquería El Fígaro</option>
-                  <option value="estilo-tijera">Estilo & Tijera</option>
-                </select>
-              )}
-              <p className="text-[7px] sm:text-[9px] text-elegant-gold font-bold tracking-widest uppercase mt-0.5">
-                Inquilino En Vivo
-              </p>
+          <div className="flex items-center justify-between w-full md:w-auto gap-3 shrink-0">
+            <div className="flex items-center space-x-2.5">
+              <SyncBarberLogo size={34} showText={true} />
+              <div className="h-7 w-[1px] bg-elegant-border hidden xs:block" />
+              
+              <div className="flex items-center gap-2">
+                {config.customLogoUrl && (
+                  <div className="h-7 w-7 rounded-full bg-elegant-sub border border-elegant-border flex items-center justify-center text-sm overflow-hidden shrink-0">
+                    {config.customLogoUrl.startsWith("http") || config.customLogoUrl.startsWith("data:image") ? (
+                      <img src={config.customLogoUrl} alt={config.name} className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="font-sans leading-none">{config.customLogoUrl}</span>
+                    )}
+                  </div>
+                )}
+                
+                <div className="flex flex-col">
+                  <span className="font-extrabold text-xs sm:text-sm tracking-tight text-white font-sans block max-w-[100px] xs:max-w-[140px] sm:max-w-none truncate">
+                    {config.name || "Barberia Demo"}
+                  </span>
+                  {config.tagline ? (
+                    <p className="text-[7px] sm:text-[9px] text-elegant-gold font-bold uppercase mt-0.5 leading-none max-w-[120px] xs:max-w-[150px] truncate">
+                      {config.tagline}
+                    </p>
+                  ) : (
+                    <p className="text-[7px] sm:text-[9px] text-elegant-gold font-bold tracking-widest uppercase mt-0.5 leading-none">
+                      Inquilino En Vivo
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Quick action for mobile */}
+            <div className="flex items-center space-x-1.5 md:hidden">
+              <button
+                onClick={openDuplicateTab}
+                className="p-1.5 border border-elegant-border rounded-xl bg-elegant-sub hover:bg-elegant-border text-elegant-text transition-all active:scale-95 cursor-pointer flex items-center justify-center"
+                title="Probar en otra pestaña"
+              >
+                <Share2 className="h-3.5 w-3.5" />
+              </button>
             </div>
           </div>
 
-          {/* Selector de Roles Principal */}
-          <div className="bg-elegant-sub p-1 rounded-2xl flex items-center space-x-1 border border-elegant-border shrink-0">
+          {/* Selector de Roles Principal - Desplazable horizontalmente en celulares */}
+          <div className="bg-elegant-sub p-1 rounded-2xl flex items-center space-x-1 border border-elegant-border overflow-x-auto max-w-full scrollbar-none shrink-0 self-stretch md:self-auto">
+            {activeTenantId === "bella-barba" && (
+              <button
+                onClick={() => {
+                  if (currentRole !== "syncbarber") {
+                    setCurrentRole("syncbarber");
+                  }
+                }}
+                className={`px-2.5 py-1.5 xs:px-3 rounded-xl text-[10px] xs:text-xs font-bold flex items-center gap-1 sm:gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                  currentRole === "syncbarber"
+                    ? "bg-cyan-500 text-elegant-bg shadow-xs font-extrabold"
+                    : "text-elegant-text-muted hover:text-cyan-400"
+                }`}
+              >
+                <Sparkles className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                <span>Conoce SYNCBARBER</span>
+              </button>
+            )}
+
             <button
               onClick={() => {
                 if (currentRole !== "client") {
                   setCurrentRole("client");
                 }
               }}
-              className={`px-2.5 py-1.5 xs:px-3 py-1.5 md:px-4 rounded-xl text-[11px] xs:text-xs font-bold flex items-center gap-1 sm:gap-1.5 transition-all cursor-pointer ${
+              className={`px-2.5 py-1.5 xs:px-3 rounded-xl text-[10px] xs:text-xs font-bold flex items-center gap-1 sm:gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
                 currentRole === "client"
                   ? "bg-elegant-gold text-elegant-bg shadow-xs font-extrabold"
                   : "text-elegant-text-muted hover:text-elegant-text"
@@ -693,7 +907,7 @@ export default function App() {
             {!loggedUser ? (
               <button
                 onClick={() => setCurrentRole("login")}
-                className={`px-2.5 py-1.5 xs:px-3 py-1.5 md:px-4 rounded-xl text-[11px] xs:text-xs font-bold flex items-center gap-1 sm:gap-1.5 transition-all cursor-pointer ${
+                className={`px-2.5 py-1.5 xs:px-3 rounded-xl text-[10px] xs:text-xs font-bold flex items-center gap-1 sm:gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
                   currentRole === "login"
                     ? "bg-elegant-gold text-elegant-bg shadow-xs font-extrabold"
                     : "text-elegant-text-muted hover:text-elegant-text"
@@ -706,7 +920,7 @@ export default function App() {
               <>
                 <button
                   onClick={() => setCurrentRole(loggedUser.role)}
-                  className={`px-2.5 py-1.5 xs:px-3 py-1.5 md:px-4 rounded-xl text-[11px] xs:text-xs font-bold flex items-center gap-1 sm:gap-1.5 transition-all cursor-pointer ${
+                  className={`px-2.5 py-1.5 xs:px-3 rounded-xl text-[10px] xs:text-xs font-bold flex items-center gap-1 sm:gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
                     currentRole === "admin" || currentRole === "barber"
                       ? "bg-elegant-gold text-elegant-bg shadow-xs font-extrabold"
                       : "text-elegant-text-muted hover:text-elegant-text"
@@ -719,147 +933,330 @@ export default function App() {
                 </button>
                 <button
                   onClick={handleLogout}
-                  className="px-2 py-1 border border-rose-950 hover:bg-rose-950/40 text-rose-400 rounded-xl text-[10px] font-bold cursor-pointer transition-colors"
+                  className="px-2 py-1 border border-rose-950 hover:bg-rose-950/40 text-rose-400 rounded-xl text-[9px] font-bold cursor-pointer transition-colors whitespace-nowrap"
                 >
                   Salir
                 </button>
               </>
             )}
 
-            <button
-              onClick={() => setCurrentRole("developer")}
-              className={`px-2.5 py-1.5 xs:px-3 py-1.5 md:px-4 rounded-xl text-[11px] xs:text-xs font-bold flex items-center gap-1 sm:gap-1.5 transition-all cursor-pointer ${
-                currentRole === "developer"
-                  ? "bg-amber-500 text-elegant-bg shadow-xs font-extrabold"
-                  : "text-elegant-text-muted hover:text-elegant-text"
-              }`}
-            >
-              <Cpu className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-              <span>Desarrollador</span>
-            </button>
+            {currentRole === "developer" && (
+              <button
+                onClick={() => setCurrentRole("developer")}
+                className="px-2.5 py-1.5 xs:px-3 rounded-xl text-[10px] xs:text-xs font-bold flex items-center gap-1 sm:gap-1.5 transition-all cursor-pointer whitespace-nowrap bg-amber-500 text-elegant-bg shadow-xs font-extrabold"
+              >
+                <Cpu className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                <span>Desarrollador</span>
+              </button>
+            )}
           </div>
 
-          {/* Botones de acción rápidos */}
-          <div className="flex items-center space-x-2 shrink-0">
-            {/* Live Indicator Dot */}
-            <div 
-              className={`hidden md:flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-bold font-mono ${
-                isConnected 
-                  ? "bg-emerald-950/40 text-emerald-400 border border-emerald-800/50" 
-                  : "bg-amber-950/40 text-amber-400 border border-amber-800/50 animate-pulse"
-              }`}
-              title={isConnected ? "Sincronizado en tiempo real" : "Conexión inestable..."}
-            >
-              <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? "bg-emerald-500" : "bg-amber-500 animate-ping"}`}></span>
-              <span>{isConnected ? "SINCRO" : "RECONECTANDO"}</span>
-            </div>
+          {/* Botones de acción rápidos para Desktop / Mobile (filtrados por Perfil y Licencia) */}
+          {(() => {
+            const activeLicense = config.licenseType || "premium";
+            const isStaffUser = loggedUser && (loggedUser.role === "admin" || loggedUser.role === "barber" || loggedUser.role === "developer");
+            const isStaffView = currentRole === "admin" || currentRole === "barber" || currentRole === "developer";
+            const isAdminOrDev = (loggedUser && (loggedUser.role === "admin" || loggedUser.role === "developer")) || currentRole === "admin" || currentRole === "developer";
+            const isBarberOrStaff = isStaffUser || isStaffView;
 
-            {/* Probar doble ventana */}
-            <button
-              onClick={openDuplicateTab}
-              className="p-2 border border-elegant-border rounded-xl bg-elegant-sub hover:bg-elegant-border text-elegant-text transition-colors active:scale-95 cursor-pointer flex items-center justify-center"
-              title="Abrir otra pestaña para probar en tiempo real"
-            >
-              <Share2 className="h-4 w-4" />
-              <span className="hidden lg:inline text-[10px] font-bold ml-1.5 uppercase">Probar Real-time</span>
-            </button>
-          </div>
+            const supportsModoSilla = activeLicense === "profesional" || activeLicense === "premium";
+            const supportsKiosco = activeLicense === "premium";
+            const supportsCierreCaja = activeLicense === "profesional" || activeLicense === "premium";
+
+            const canShowModoSilla = isBarberOrStaff && supportsModoSilla;
+            const canShowKiosco = isAdminOrDev && supportsKiosco;
+            const canShowCierreCaja = isBarberOrStaff && supportsCierreCaja;
+            const canShowProbarRealTime = currentRole === "developer" || (loggedUser && loggedUser.role === "developer") || (loggedUser && loggedUser.role === "admin");
+            const canShowSincro = isBarberOrStaff || !!loggedUser;
+
+            return (
+              <div className="flex items-center space-x-2 shrink-0">
+                {/* Botón PWA Modo Silla */}
+                {canShowModoSilla && (
+                  <button
+                    onClick={() => setIsModoSillaActive(true)}
+                    className="px-2.5 py-1.5 bg-gradient-to-r from-amber-600/30 to-amber-500/20 border border-amber-500/50 hover:bg-amber-500/30 text-amber-300 rounded-xl text-[10px] xs:text-xs font-extrabold flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
+                    title="Abrir Vista Móvil PWA para Barberos en Silla"
+                  >
+                    <Smartphone className="h-3.5 w-3.5 text-amber-400 animate-pulse" />
+                    <span>📱 Modo Silla</span>
+                  </button>
+                )}
+
+                {/* Botón Kiosco Recepción */}
+                {canShowKiosco && (
+                  <button
+                    onClick={() => setShowKioscoModal(true)}
+                    className="px-2.5 py-1.5 bg-cyan-950/40 border border-cyan-800/60 hover:bg-cyan-900/40 text-cyan-300 rounded-xl text-[10px] xs:text-xs font-extrabold flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
+                    title="Abrir Kiosco de Check-in Recepción (Pantalla TV)"
+                  >
+                    <span>📺 Kiosco</span>
+                  </button>
+                )}
+
+                {/* Botón Cierre de Caja */}
+                {canShowCierreCaja && (
+                  <button
+                    onClick={() => setShowCierreCajaModal(true)}
+                    className="px-2.5 py-1.5 bg-emerald-950/40 border border-emerald-800/60 hover:bg-emerald-900/40 text-emerald-300 rounded-xl text-[10px] xs:text-xs font-extrabold flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
+                    title="Abrir Arqueo y Cierre de Caja Automatizado"
+                  >
+                    <span>💰 Cierre Caja</span>
+                  </button>
+                )}
+
+                {/* Live Indicator Dot */}
+                {canShowSincro && (
+                  <div 
+                    className={`hidden md:flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-bold font-mono ${
+                      isConnected 
+                        ? "bg-emerald-950/40 text-emerald-400 border border-emerald-800/50" 
+                        : "bg-amber-950/40 text-amber-400 border border-amber-800/50 animate-pulse"
+                    }`}
+                    title={isConnected ? "Sincronizado en tiempo real" : "Conexión inestable..."}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? "bg-emerald-500" : "bg-amber-500 animate-ping"}`}></span>
+                    <span>{isConnected ? "SINCRO" : "RECONECTANDO"}</span>
+                  </div>
+                )}
+
+                {/* Probar doble ventana */}
+                {canShowProbarRealTime && (
+                  <button
+                    onClick={openDuplicateTab}
+                    className="hidden md:flex p-2 border border-elegant-border rounded-xl bg-elegant-sub hover:bg-elegant-border text-elegant-text transition-colors active:scale-95 cursor-pointer items-center justify-center"
+                    title="Abrir otra pestaña para probar en tiempo real"
+                  >
+                    <Share2 className="h-4 w-4" />
+                    <span className="hidden lg:inline text-[10px] font-bold ml-1.5 uppercase">Probar Real-time</span>
+                  </button>
+                )}
+              </div>
+            );
+          })()}
 
         </div>
       </header>
 
-      {/* 2. Sub-Menú para Administradores (Agenda vs Barberos vs Config) */}
-      {currentRole === "admin" && (
+      {/* 2. Sub-Menú Estructurado con Submódulos para Administradores */}
+      {currentRole === "admin" && !config.needsSetup && (
         (() => {
           const activeLicense = config.licenseType || "premium";
           const isCalendarLocked = activeLicense === "basica";
           const isCommissionsLocked = activeLicense === "basica" || activeLicense === "profesional";
           const isClientsLocked = activeLicense === "basica";
+          const isInventoryLocked = activeLicense === "basica";
+
+          // Categoría activa inferida según la pestaña de administración seleccionada
+          let activeCategory: "citas" | "pos" | "equipo" | "ajustes" = "citas";
+          if (adminTab === "agenda" || adminTab === "calendar") activeCategory = "citas";
+          else if (adminTab === "inventory" || adminTab === "commissions") activeCategory = "pos";
+          else if (adminTab === "barbers" || adminTab === "clients") activeCategory = "equipo";
+          else if (adminTab === "settings") activeCategory = "ajustes";
 
           return (
-            <div className="bg-elegant-card text-elegant-text border-b border-elegant-border">
-              <div className="max-w-7xl mx-auto px-4 md:px-6 flex items-center space-x-4 h-12 text-xs overflow-x-auto">
-                <button
-                  onClick={() => setAdminTab("agenda")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
-                    adminTab === "agenda" 
-                      ? "bg-elegant-sub text-elegant-gold font-bold" 
-                      : "text-elegant-text-muted hover:text-elegant-text"
-                  }`}
-                >
-                  <CalendarIcon className="h-4 w-4" />
-                  <span>Control de Agenda Diaria</span>
-                </button>
-                <button
-                  onClick={() => setAdminTab("calendar")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
-                    adminTab === "calendar" 
-                      ? "bg-elegant-sub text-elegant-gold font-bold" 
-                      : "text-elegant-text-muted hover:text-elegant-text"
-                  }`}
-                >
-                  <Sparkles className="h-4 w-4 text-elegant-gold" />
-                  <span>Calendario Interactivo</span>
-                  {isCalendarLocked && (
-                    <span className="text-[8px] bg-rose-950/40 text-rose-400 border border-rose-800/40 px-1.5 py-0.5 rounded-md font-bold flex items-center gap-0.5">
-                      🔒 PRO
-                    </span>
+            <div className="bg-elegant-card text-elegant-text border-b border-elegant-border shadow-xs">
+              <div className="max-w-7xl mx-auto px-4 md:px-6 py-2.5 space-y-2">
+                {/* Nivel 1: Módulos Principales (Categorías) */}
+                <div className="flex items-center justify-between gap-2 overflow-x-auto scrollbar-none pb-0.5">
+                  <div className="flex items-center space-x-1.5 xs:space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (adminTab !== "agenda" && adminTab !== "calendar") {
+                          setAdminTab("agenda");
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap border ${
+                        activeCategory === "citas"
+                          ? "bg-amber-500/15 border-amber-500/50 text-amber-300 shadow-xs font-extrabold"
+                          : "bg-elegant-sub/60 border-elegant-border text-elegant-text-muted hover:text-white"
+                      }`}
+                    >
+                      <CalendarIcon className="h-3.5 w-3.5 text-amber-400" />
+                      <span>📅 Citas & Agenda</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (adminTab !== "inventory" && adminTab !== "commissions") {
+                          setAdminTab("inventory");
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap border ${
+                        activeCategory === "pos"
+                          ? "bg-cyan-500/15 border-cyan-500/50 text-cyan-300 shadow-xs font-extrabold"
+                          : "bg-elegant-sub/60 border-elegant-border text-elegant-text-muted hover:text-white"
+                      }`}
+                    >
+                      <Wine className="h-3.5 w-3.5 text-cyan-400" />
+                      <span>💰 Ventas & POS</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (adminTab !== "barbers" && adminTab !== "clients") {
+                          setAdminTab("barbers");
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap border ${
+                        activeCategory === "equipo"
+                          ? "bg-emerald-500/15 border-emerald-500/50 text-emerald-300 shadow-xs font-extrabold"
+                          : "bg-elegant-sub/60 border-elegant-border text-elegant-text-muted hover:text-white"
+                      }`}
+                    >
+                      <Users className="h-3.5 w-3.5 text-emerald-400" />
+                      <span>👥 Equipo & Clientes</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setAdminTab("settings")}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap border ${
+                        activeCategory === "ajustes"
+                          ? "bg-elegant-gold/20 border-elegant-gold/60 text-elegant-gold shadow-xs font-extrabold"
+                          : "bg-elegant-sub/60 border-elegant-border text-elegant-text-muted hover:text-white"
+                      }`}
+                    >
+                      <Settings className="h-3.5 w-3.5 text-elegant-gold" />
+                      <span>⚙️ Configuración</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Nivel 2: Submódulos Específicos del Módulo Activo */}
+                <div className="flex items-center space-x-2 pt-1 border-t border-elegant-border/40 overflow-x-auto scrollbar-none text-xs">
+                  <span className="text-[10px] font-extrabold text-elegant-text-muted uppercase tracking-wider shrink-0 mr-1 font-mono">
+                    Submódulos:
+                  </span>
+
+                  {activeCategory === "citas" && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setAdminTab("agenda")}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold ${
+                          adminTab === "agenda"
+                            ? "bg-amber-500 text-black shadow-xs font-extrabold"
+                            : "bg-elegant-sub/80 text-elegant-text-muted hover:text-white"
+                        }`}
+                      >
+                        <CalendarIcon className="h-3.5 w-3.5" />
+                        <span>Control de Agenda Diaria</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setAdminTab("calendar")}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold ${
+                          adminTab === "calendar"
+                            ? "bg-amber-500 text-black shadow-xs font-extrabold"
+                            : "bg-elegant-sub/80 text-elegant-text-muted hover:text-white"
+                        }`}
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                        <span>Calendario Interactivo</span>
+                        {isCalendarLocked && (
+                          <span className="text-[8px] bg-rose-950/80 text-rose-300 border border-rose-800 px-1.5 py-0.2 rounded-md font-extrabold">
+                            🔒 PRO
+                          </span>
+                        )}
+                      </button>
+                    </>
                   )}
-                </button>
-                <button
-                  onClick={() => setAdminTab("commissions")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
-                    adminTab === "commissions" 
-                      ? "bg-elegant-sub text-elegant-gold font-bold" 
-                      : "text-elegant-text-muted hover:text-elegant-text"
-                  }`}
-                >
-                  <Coins className="h-4 w-4 text-elegant-gold" />
-                  <span>Comisiones & Propinas</span>
-                  {isCommissionsLocked && (
-                    <span className="text-[8px] bg-rose-950/40 text-rose-400 border border-rose-800/40 px-1.5 py-0.5 rounded-md font-bold flex items-center gap-0.5">
-                      🔒 VIP
-                    </span>
+
+                  {activeCategory === "pos" && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setAdminTab("inventory")}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold ${
+                          adminTab === "inventory"
+                            ? "bg-cyan-500 text-black shadow-xs font-extrabold"
+                            : "bg-elegant-sub/80 text-elegant-text-muted hover:text-white"
+                        }`}
+                      >
+                        <Wine className="h-3.5 w-3.5" />
+                        <span>Inventario & Nevera POS</span>
+                        {isInventoryLocked && (
+                          <span className="text-[8px] bg-rose-950/80 text-rose-300 border border-rose-800 px-1.5 py-0.2 rounded-md font-extrabold">
+                            🔒 PRO
+                          </span>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setAdminTab("commissions")}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold ${
+                          adminTab === "commissions"
+                            ? "bg-cyan-500 text-black shadow-xs font-extrabold"
+                            : "bg-elegant-sub/80 text-elegant-text-muted hover:text-white"
+                        }`}
+                      >
+                        <Coins className="h-3.5 w-3.5" />
+                        <span>Comisiones & Propinas</span>
+                        {isCommissionsLocked && (
+                          <span className="text-[8px] bg-rose-950/80 text-rose-300 border border-rose-800 px-1.5 py-0.2 rounded-md font-extrabold">
+                            🔒 VIP
+                          </span>
+                        )}
+                      </button>
+                    </>
                   )}
-                </button>
-                <button
-                  onClick={() => setAdminTab("barbers")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
-                    adminTab === "barbers" 
-                      ? "bg-elegant-sub text-elegant-gold font-bold" 
-                      : "text-elegant-text-muted hover:text-elegant-text"
-                  }`}
-                >
-                  <User className="h-4 w-4" />
-                  <span>Administrar Barberos</span>
-                </button>
-                <button
-                  onClick={() => setAdminTab("clients")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
-                    adminTab === "clients" 
-                      ? "bg-elegant-sub text-elegant-gold font-bold" 
-                      : "text-elegant-text-muted hover:text-elegant-text"
-                  }`}
-                >
-                  <Users className="h-4 w-4" />
-                  <span>Clientes & Membresías</span>
-                  {isClientsLocked && (
-                    <span className="text-[8px] bg-rose-950/40 text-rose-400 border border-rose-800/40 px-1.5 py-0.5 rounded-md font-bold flex items-center gap-0.5">
-                      🔒 PRO
-                    </span>
+
+                  {activeCategory === "equipo" && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setAdminTab("barbers")}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold ${
+                          adminTab === "barbers"
+                            ? "bg-emerald-500 text-black shadow-xs font-extrabold"
+                            : "bg-elegant-sub/80 text-elegant-text-muted hover:text-white"
+                        }`}
+                      >
+                        <User className="h-3.5 w-3.5" />
+                        <span>Administrar Barberos</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setAdminTab("clients")}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold ${
+                          adminTab === "clients"
+                            ? "bg-emerald-500 text-black shadow-xs font-extrabold"
+                            : "bg-elegant-sub/80 text-elegant-text-muted hover:text-white"
+                        }`}
+                      >
+                        <Users className="h-3.5 w-3.5" />
+                        <span>Clientes & Membresías</span>
+                        {isClientsLocked && (
+                          <span className="text-[8px] bg-rose-950/80 text-rose-300 border border-rose-800 px-1.5 py-0.2 rounded-md font-extrabold">
+                            🔒 PRO
+                          </span>
+                        )}
+                      </button>
+                    </>
                   )}
-                </button>
-                <button
-                  onClick={() => setAdminTab("settings")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
-                    adminTab === "settings" 
-                      ? "bg-elegant-sub text-elegant-gold font-bold" 
-                      : "text-elegant-text-muted hover:text-elegant-text"
-                  }`}
-                >
-                  <Settings className="h-4 w-4" />
-                  <span>Configuración del Salón</span>
-                </button>
+
+                  {activeCategory === "ajustes" && (
+                    <button
+                      type="button"
+                      onClick={() => setAdminTab("settings")}
+                      className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold ${
+                        adminTab === "settings"
+                          ? "bg-elegant-gold text-black shadow-xs font-extrabold"
+                          : "bg-elegant-sub/80 text-elegant-text-muted hover:text-white"
+                      }`}
+                    >
+                      <Settings className="h-3.5 w-3.5" />
+                      <span>Configuración del Salón</span>
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           );
@@ -877,15 +1274,7 @@ export default function App() {
           </div>
         )}
 
-        {loggedUser?.role === "admin" && config.needsSetup && (
-          <InitialSetupWizard
-            initialConfig={config}
-            initialServices={services}
-            initialBarbers={barbers}
-            onComplete={handleCompleteSetup}
-            formatPrice={formatPrice}
-          />
-        )}
+
 
         {/* Loading overlay for initial sync */}
         {isLoading ? (
@@ -907,7 +1296,22 @@ export default function App() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.15 }}
             >
-              {currentRole === "client" ? (
+              {currentRole === "syncbarber" ? (
+                <SyncBarberMarketing
+                  onEnterApp={(targetRole) => {
+                    if (targetRole === "client") {
+                      setCurrentRole("client");
+                      triggerToast("Ecosistema Demo", "Has ingresado a la Vista Cliente. ¡Explora los salones y reserva un turno en vivo!", "success");
+                    } else if (targetRole === "admin") {
+                      setCurrentRole("login");
+                      triggerToast("Inicio de Personal", "Ingresa tus credenciales para acceder al Panel de Administración o de Barberos.", "info");
+                    } else if (targetRole === "developer") {
+                      setCurrentRole("developer");
+                    }
+                  }}
+                  formatPrice={formatPrice}
+                />
+              ) : currentRole === "client" ? (
                 <ClientDashboard
                   appointments={appointments}
                   services={services}
@@ -918,6 +1322,7 @@ export default function App() {
                   formatPrice={formatPrice}
                   memberships={memberships}
                   reviews={reviews}
+                  clients={clients}
                 />
               ) : currentRole === "login" ? (
                 <BarberLogin
@@ -925,12 +1330,84 @@ export default function App() {
                   onCancel={() => setCurrentRole("client")}
                 />
               ) : currentRole === "developer" ? (
-                <DeveloperPanel
-                  config={config}
-                  onUpdateConfig={handleUpdateConfig}
-                  formatPrice={formatPrice}
-                  triggerToast={triggerToast}
-                />
+                !isDevUnlocked ? (
+                  <div className="max-w-md mx-auto my-12 bg-elegant-card border border-elegant-border rounded-3xl p-6 md:p-8 shadow-2xl text-left space-y-6">
+                    <div className="flex items-center gap-3">
+                      <div className="p-3 bg-amber-950/40 text-amber-500 rounded-2xl border border-amber-900/30">
+                        <Cpu className="h-6 w-6 animate-pulse" />
+                      </div>
+                      <div>
+                        <h3 className="font-extrabold text-white text-base uppercase tracking-wider">Acceso Restringido</h3>
+                        <p className="text-xs text-elegant-text-muted">Ambiente de desarrollo y configuración del sistema.</p>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-elegant-border/60 my-2"></div>
+
+                    <p className="text-xs text-elegant-text-muted leading-relaxed">
+                      Este módulo contiene opciones de facturación SaaS, reseteo de bases de datos, cambio de inquilino global y configuraciones críticas reservadas únicamente para el <strong>desarrollador</strong> del sistema.
+                    </p>
+
+                    <div className="space-y-4">
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] font-extrabold uppercase text-amber-400 tracking-wider">Clave de Desarrollador:</label>
+                        <input
+                          type="password"
+                          placeholder="Ingresa la contraseña de desarrollo..."
+                          id="dev-pwd-input"
+                          className="w-full text-xs p-3 border border-elegant-border rounded-xl bg-elegant-sub text-white placeholder-neutral-600 focus:outline-none focus:border-amber-500 tracking-widest"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              const val = (document.getElementById("dev-pwd-input") as HTMLInputElement)?.value;
+                              if (val === "syncdev2026" || val === "12345") {
+                                setIsDevUnlocked(true);
+                                setDevError("");
+                              } else {
+                                setDevError("Clave incorrecta. Acceso denegado.");
+                              }
+                            }
+                          }}
+                        />
+                        {devError && (
+                          <p className="text-[11px] text-rose-400 font-bold">{devError}</p>
+                        )}
+                      </div>
+
+                      <div className="flex gap-2 pt-2">
+                        <button
+                          onClick={() => {
+                            const val = (document.getElementById("dev-pwd-input") as HTMLInputElement)?.value;
+                            if (val === "syncdev2026" || val === "12345") {
+                              setIsDevUnlocked(true);
+                              setDevError("");
+                            } else {
+                              setDevError("Clave incorrecta. Acceso denegado.");
+                            }
+                          }}
+                          className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl cursor-pointer transition-colors text-center"
+                        >
+                          Desbloquear Panel
+                        </button>
+                        <button
+                          onClick={() => {
+                            setCurrentRole("client");
+                            setDevError("");
+                          }}
+                          className="px-4 py-2.5 bg-elegant-sub border border-elegant-border text-elegant-text hover:text-white rounded-xl text-xs font-bold cursor-pointer transition-colors"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <DeveloperPanel
+                    config={config}
+                    onUpdateConfig={handleUpdateConfig}
+                    formatPrice={formatPrice}
+                    triggerToast={triggerToast}
+                  />
+                )
               ) : currentRole === "barber" ? (
                 <AdminDashboard
                   appointments={appointments}
@@ -944,12 +1421,27 @@ export default function App() {
                   loggedBarberId={loggedUser?.barberId}
                   barbers={barbers}
                   onUpdateBarber={handleUpdateBarber}
+                  clients={clients}
+                  onUpdateClient={handleUpdateClient}
+                  announcements={announcements}
+                  inventory={inventory}
+                  onRefresh={() => fetchInitialData()}
+                  onOpenModoSilla={() => setIsModoSillaActive(true)}
+                />
+              ) : (currentRole === "admin" && config.needsSetup) ? (
+                <InitialSetupWizard
+                  initialConfig={config}
+                  initialServices={services}
+                  initialBarbers={barbers}
+                  onComplete={handleCompleteSetup}
+                  formatPrice={formatPrice}
                 />
               ) : adminTab === "agenda" ? (
                 <AdminDashboard
                   appointments={appointments}
                   services={services}
                   config={config}
+                  onUpdateConfig={handleUpdateConfig}
                   onUpdateAppointment={handleUpdateAppointment}
                   onDeleteAppointment={handleDeleteAppointment}
                   onCreateAppointment={handleCreateAppointment}
@@ -957,9 +1449,35 @@ export default function App() {
                   isBarberView={false}
                   barbers={barbers}
                   onUpdateBarber={handleUpdateBarber}
+                  clients={clients}
+                  onUpdateClient={handleUpdateClient}
+                  announcements={announcements}
+                  inventory={inventory}
+                  onRefresh={() => fetchInitialData()}
+                  onOpenModoSilla={() => setIsModoSillaActive(true)}
                 />
+              ) : adminTab === "inventory" ? (
+                ((config.licenseType || "premium") === "basica" || config.featureFlags?.enableInventory === false) ? (
+                  <LockedModule
+                    moduleName="Ventas de Inventario & Nevera POS"
+                    requiredLicense="profesional"
+                    activeLicense={config.licenseType || "premium"}
+                    onNavigateToSettings={() => setAdminTab("settings")}
+                  />
+                ) : (
+                  <InventoryManager
+                    inventory={inventory}
+                    sales={sales}
+                    barbers={barbers}
+                    clients={clients}
+                    formatPrice={formatPrice}
+                    activeLicense={config.licenseType || "premium"}
+                    onRefresh={() => fetchInitialData()}
+                    triggerToast={triggerToast}
+                  />
+                )
               ) : adminTab === "calendar" ? (
-                (config.licenseType || "premium") === "basica" ? (
+                ((config.licenseType || "premium") === "basica" || config.featureFlags?.enableOnlineBooking === false) ? (
                   <LockedModule
                     moduleName="Calendario Interactivo"
                     requiredLicense="profesional"
@@ -969,6 +1487,7 @@ export default function App() {
                 ) : (
                   <InteractiveCalendar
                     appointments={appointments}
+                    clients={clients}
                     barbers={barbers}
                     services={services}
                     config={config}
@@ -978,7 +1497,7 @@ export default function App() {
                   />
                 )
               ) : adminTab === "commissions" ? (
-                ((config.licenseType || "premium") === "basica" || (config.licenseType || "premium") === "profesional") ? (
+                (((config.licenseType || "premium") === "basica" || (config.licenseType || "premium") === "profesional") || config.featureFlags?.enableCashClosure === false) ? (
                   <LockedModule
                     moduleName="Comisiones & Propinas de Barberos"
                     requiredLicense="premium"
@@ -989,6 +1508,8 @@ export default function App() {
                   <CommissionsManager
                     appointments={appointments}
                     barbers={barbers}
+                    inventory={inventory}
+                    sales={sales}
                     onUpdateBarber={handleUpdateBarber}
                     onUpdateAppointment={handleUpdateAppointment}
                     formatPrice={formatPrice}
@@ -1001,9 +1522,10 @@ export default function App() {
                   onUpdateBarber={handleUpdateBarber}
                   onDeleteBarber={handleDeleteBarber}
                   activeLicense={config.licenseType || "premium"}
+                  config={config}
                 />
               ) : adminTab === "clients" ? (
-                (config.licenseType || "premium") === "basica" ? (
+                ((config.licenseType || "premium") === "basica" || config.featureFlags?.enableMemberships === false) ? (
                   <LockedModule
                     moduleName="Clientes & Membresías VIP"
                     requiredLicense="profesional"
@@ -1043,6 +1565,29 @@ export default function App() {
           <div className="space-y-1 text-center sm:text-left">
             <p className="font-bold text-white">{config.name} — Agenda Real-Time</p>
             <p className="text-[11px] text-elegant-text-muted">Diseñado para simplificar turnos entre peluqueros y clientes.</p>
+            <p className="text-[11px] mt-1 text-elegant-text-muted">
+              Diseñado por{" "}
+              <a 
+                href="https://www.linkedin.com/in/reinaldo-duran-castro" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-elegant-gold hover:underline inline-flex items-center gap-1 font-semibold transition-all"
+              >
+                <Linkedin className="h-3 w-3" />
+                Reinaldo Duran
+              </a>
+              {" • "}
+              <button
+                onClick={() => {
+                  setCurrentRole("developer");
+                  triggerToast("Consola de Desarrollo", "Has ingresado al ambiente técnico de desarrollo.", "info");
+                }}
+                className="hover:text-amber-400 font-semibold transition-all inline-flex items-center gap-0.5 ml-1 cursor-pointer bg-transparent border-none p-0 text-[10px]"
+              >
+                <Cpu className="h-2.5 w-2.5 text-amber-500/80" />
+                <span>Consola Técnica</span>
+              </button>
+            </p>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-4 text-[11px]">
             <span className="flex items-center gap-1">
@@ -1091,6 +1636,48 @@ export default function App() {
           ))}
         </AnimatePresence>
       </div>
+
+      {/* 6. MÓDULO PWA MODO SILLA BARBERO (Vista Rápida Móvil) */}
+      {isModoSillaActive && (
+        <ModoSillaPWA
+          appointments={appointments}
+          clients={clients}
+          barbers={barbers}
+          services={services}
+          config={config}
+          inventory={inventory}
+          loggedBarberId={loggedUser?.barberId}
+          onUpdateAppointment={handleUpdateAppointment}
+          onUpdateClient={handleUpdateClient}
+          onCreateAppointment={handleCreateAppointment}
+          onRefresh={() => fetchInitialData()}
+          formatPrice={formatPrice}
+          onClose={() => setIsModoSillaActive(false)}
+          salonName={config.name}
+        />
+      )}
+
+      {/* 7. MÓDULO KIOSCO DE RECEPCIÓN (AUTO CHECK-IN & PANTALLA TV) */}
+      {showKioscoModal && (
+        <ModoKiosco
+          appointments={appointments}
+          barbers={barbers}
+          formatPrice={formatPrice}
+          onRefresh={() => fetchInitialData()}
+          onClose={() => setShowKioscoModal(false)}
+        />
+      )}
+
+      {/* 8. MÓDULO ARQUEO Y CIERRE DE CAJA AUTOMATIZADO */}
+      {showCierreCajaModal && (
+        <CierreCajaModal
+          formatPrice={formatPrice}
+          onRefresh={() => fetchInitialData()}
+          onClose={() => setShowCierreCajaModal(false)}
+        />
+      )}
+
+      {/* DemoCenter removed per user request */}
 
     </div>
   );

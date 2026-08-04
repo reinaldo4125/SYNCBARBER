@@ -277,7 +277,7 @@ export default function SyncBarberLogo({
           )}
           {showTagline && (
             <span
-              className="text-elegant-gold font-bold tracking-widest uppercase mt-1 leading-none"
+              className="font-bold tracking-widest uppercase mt-1 leading-none text-[#C5A267]"
               style={{ fontSize: size * 0.15 }}
             >
               Precision & Connection

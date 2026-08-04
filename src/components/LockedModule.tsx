@@ -42,11 +42,13 @@ export default function LockedModule({
 
       {/* Upgrade Benefits Card */}
       <div className="bg-elegant-sub/50 border border-elegant-border rounded-2xl p-5 text-left space-y-4 max-w-md mx-auto">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <span className="text-[10px] font-bold uppercase tracking-widest text-elegant-gold">
             {isPremiumUpgrade ? "Beneficios Plan Premium" : "Beneficios Plan Profesional"}
           </span>
-          <span className="text-xs font-bold text-emerald-400">Desde {isPremiumUpgrade ? "$59/mes" : "$35/mes"}</span>
+          <span className="text-xs font-bold text-emerald-400 font-mono text-right shrink-0">
+            {isPremiumUpgrade ? "COP $179.000/mes (~$45 USD)" : "COP $99.000/mes (~$25 USD)"}
+          </span>
         </div>
 
         <div className="space-y-2 text-xs">
@@ -99,7 +101,7 @@ export default function LockedModule({
       <div className="pt-2">
         <button
           onClick={onNavigateToSettings}
-          className="px-6 py-3 bg-elegant-gold hover:bg-amber-500 text-elegant-bg font-bold text-xs rounded-xl transition-all cursor-pointer inline-flex items-center space-x-2"
+          className="px-6 py-3 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg font-bold text-xs rounded-xl transition-all cursor-pointer inline-flex items-center space-x-2"
         >
           <span>Mejorar mi Licencia Ahora</span>
           <ArrowRight className="h-4 w-4" />

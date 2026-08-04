@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Barber } from "../types";
+import { Barber, SalonConfig } from "../types";
 import { 
   Users, 
   UserPlus, 
@@ -20,6 +20,7 @@ interface BarberManagerProps {
   onUpdateBarber: (id: string, updates: Partial<Barber>) => Promise<any>;
   onDeleteBarber: (id: string) => Promise<any>;
   activeLicense?: "basica" | "profesional" | "premium";
+  config?: SalonConfig;
 }
 
 export default function BarberManager({
@@ -28,7 +29,16 @@ export default function BarberManager({
   onUpdateBarber,
   onDeleteBarber,
   activeLicense = "premium",
+  config,
 }: BarberManagerProps) {
+  const DEFAULT_CATEGORIES = [
+    { id: "cabello", name: "Corte de Cabello" },
+    { id: "barba", name: "Barbería / Barba" },
+    { id: "color", name: "Tinte o Coloración" },
+    { id: "tratamiento", name: "Tratamiento de Cabello" },
+  ];
+
+  const serviceCategories = config?.serviceCategories || DEFAULT_CATEGORIES;
   // Editing state
   const [editingBarber, setEditingBarber] = useState<Barber | null>(null);
   
@@ -154,7 +164,7 @@ export default function BarberManager({
         {!showAddForm && !editingBarber && (
           <button
             onClick={() => { resetForm(); setShowAddForm(true); }}
-            className="px-4 py-2 bg-elegant-gold hover:bg-amber-500 text-elegant-bg font-bold text-xs rounded-xl cursor-pointer transition-colors flex items-center gap-1.5"
+            className="px-4 py-2 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg font-bold text-xs rounded-xl cursor-pointer transition-colors flex items-center gap-1.5"
           >
             <UserPlus className="h-4 w-4" />
             <span>Agregar Nuevo Barbero</span>
@@ -233,12 +243,7 @@ export default function BarberManager({
           <div className="space-y-2">
             <label className="text-[10px] font-bold uppercase tracking-wider text-elegant-text-muted block">Categorías de Servicio Permitidas</label>
             <div className="flex flex-wrap gap-2">
-              {[
-                { id: "cabello", label: "Corte de Cabello" },
-                { id: "barba", label: "Barbería / Barba" },
-                { id: "color", label: "Tinte o Coloración" },
-                { id: "tratamiento", label: "Tratamiento de Cabello" },
-              ].map((spec) => {
+              {serviceCategories.map((spec) => {
                 const isSelected = specialties.includes(spec.id);
                 return (
                   <button
@@ -251,7 +256,7 @@ export default function BarberManager({
                         : "bg-elegant-sub border border-elegant-border text-elegant-text hover:bg-elegant-border"
                     }`}
                   >
-                    {spec.label}
+                    {spec.name}
                   </button>
                 );
               })}
@@ -342,12 +347,7 @@ export default function BarberManager({
           <div className="space-y-2">
             <label className="text-[10px] font-bold uppercase tracking-wider text-elegant-text-muted block">Categorías Permitidas</label>
             <div className="flex flex-wrap gap-2">
-              {[
-                { id: "cabello", label: "Corte de Cabello" },
-                { id: "barba", label: "Barbería / Barba" },
-                { id: "color", label: "Tinte o Coloración" },
-                { id: "tratamiento", label: "Tratamiento de Cabello" },
-              ].map((spec) => {
+              {serviceCategories.map((spec) => {
                 const isSelected = (editingBarber.specialties || []).includes(spec.id);
                 return (
                   <button
@@ -360,7 +360,7 @@ export default function BarberManager({
                         : "bg-elegant-sub border border-elegant-border text-elegant-text hover:bg-elegant-border"
                     }`}
                   >
-                    {spec.label}
+                    {spec.name}
                   </button>
                 );
               })}
@@ -410,7 +410,7 @@ export default function BarberManager({
                         input.value = "";
                       }
                     }}
-                    className="px-3 py-1.5 bg-elegant-gold hover:bg-amber-500 text-elegant-bg font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                    className="px-3 py-1.5 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg font-bold text-xs rounded-xl transition-colors cursor-pointer"
                   >
                     Bloquear Fecha
                   </button>
@@ -458,7 +458,7 @@ export default function BarberManager({
             <button
               type="submit"
               disabled={loading}
-              className="px-5 py-2 bg-elegant-gold hover:bg-amber-500 font-bold text-elegant-bg rounded-xl cursor-pointer transition-colors"
+              className="px-5 py-2 bg-elegant-gold hover:bg-elegant-gold-hover font-bold text-elegant-bg rounded-xl cursor-pointer transition-colors"
             >
               {loading ? "Actualizando..." : "Guardar Cambios"}
             </button>
@@ -510,15 +510,10 @@ export default function BarberManager({
                 <p className="text-[9px] font-bold uppercase tracking-wider text-elegant-text-muted">Servicios Autorizados:</p>
                 <div className="flex flex-wrap gap-1">
                   {(barber.specialties || []).map((s) => {
-                    const trans: Record<string, string> = {
-                      cabello: "Corte",
-                      barba: "Barba",
-                      color: "Color",
-                      tratamiento: "Tratamiento"
-                    };
+                    const catName = serviceCategories.find(c => c.id === s)?.name || s;
                     return (
                       <span key={s} className="text-[9px] bg-elegant-sub px-1.5 py-0.5 rounded text-white border border-elegant-border">
-                        {trans[s] || s}
+                        {catName}
                       </span>
                     );
                   })}
