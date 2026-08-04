@@ -351,18 +351,22 @@ function getTenantMemberships(tenant: TenantData): MembershipPlan[] {
 }
 
 // Helper function to resolve tenant inventory
-function getTenantInventory(tenant: TenantData): any[] {
-  if (!tenant.inventory || !Array.isArray(tenant.inventory) || tenant.inventory.length === 0) {
-    tenant.inventory = [
-      { id: "inv_1", name: "Cerveza Club Colombia Dorada 330ml", category: "nevera", price: 7000, cost: 3500, stock: 24, minStock: 6, barcode: "7702001001", allowBarberCommission: false, commissionPercent: 0 },
-      { id: "inv_2", name: "Cerveza Corona Extra 355ml", category: "nevera", price: 9000, cost: 4800, stock: 18, minStock: 5, barcode: "7702001002", allowBarberCommission: false, commissionPercent: 0 },
-      { id: "inv_3", name: "Soda Aromatizada Frutos Rojos 300ml", category: "nevera", price: 6000, cost: 2500, stock: 15, minStock: 5, barcode: "7702001003", allowBarberCommission: false, commissionPercent: 0 },
-      { id: "inv_4", name: "Agua Manantial con Gas 500ml", category: "nevera", price: 4000, cost: 1800, stock: 30, minStock: 10, barcode: "7702001004", allowBarberCommission: false, commissionPercent: 0 },
-      { id: "inv_5", name: "Cera Moldeadora Efekto Mate 100g", category: "estilizado", price: 35000, cost: 18000, stock: 12, minStock: 3, barcode: "7702002001", allowBarberCommission: true, commissionPercent: 10 },
-      { id: "inv_6", name: "Aceite Hidratante para Barba 30ml", category: "barba", price: 28000, cost: 14000, stock: 8, minStock: 2, barcode: "7702002002", allowBarberCommission: true, commissionPercent: 10 },
-      { id: "inv_7", name: "Polvo Texturizador Volumétrico 20g", category: "estilizado", price: 40000, cost: 20000, stock: 10, minStock: 3, barcode: "7702002003", allowBarberCommission: true, commissionPercent: 12 },
-      { id: "inv_8", name: "Shampoo Anticaída & Carbón Activado 250ml", category: "cabello", price: 32000, cost: 16000, stock: 6, minStock: 2, barcode: "7702002004", allowBarberCommission: true, commissionPercent: 10 }
-    ];
+function getTenantInventory(tenant: TenantData, isDemoFallback: boolean = false): any[] {
+  if (!tenant.inventory || !Array.isArray(tenant.inventory)) {
+    if (isDemoFallback) {
+      tenant.inventory = [
+        { id: "inv_1", name: "Cerveza Club Colombia Dorada 330ml", category: "nevera", price: 7000, cost: 3500, stock: 24, minStock: 6, barcode: "7702001001", allowBarberCommission: false, commissionPercent: 0 },
+        { id: "inv_2", name: "Cerveza Corona Extra 355ml", category: "nevera", price: 9000, cost: 4800, stock: 18, minStock: 5, barcode: "7702001002", allowBarberCommission: false, commissionPercent: 0 },
+        { id: "inv_3", name: "Soda Aromatizada Frutos Rojos 300ml", category: "nevera", price: 6000, cost: 2500, stock: 15, minStock: 5, barcode: "7702001003", allowBarberCommission: false, commissionPercent: 0 },
+        { id: "inv_4", name: "Agua Manantial con Gas 500ml", category: "nevera", price: 4000, cost: 1800, stock: 30, minStock: 10, barcode: "7702001004", allowBarberCommission: false, commissionPercent: 0 },
+        { id: "inv_5", name: "Cera Moldeadora Efekto Mate 100g", category: "estilizado", price: 35000, cost: 18000, stock: 12, minStock: 3, barcode: "7702002001", allowBarberCommission: true, commissionPercent: 10 },
+        { id: "inv_6", name: "Aceite Hidratante para Barba 30ml", category: "barba", price: 28000, cost: 14000, stock: 8, minStock: 2, barcode: "7702002002", allowBarberCommission: true, commissionPercent: 10 },
+        { id: "inv_7", name: "Polvo Texturizador Volumétrico 20g", category: "estilizado", price: 40000, cost: 20000, stock: 10, minStock: 3, barcode: "7702002003", allowBarberCommission: true, commissionPercent: 12 },
+        { id: "inv_8", name: "Shampoo Anticaída & Carbón Activado 250ml", category: "cabello", price: 32000, cost: 16000, stock: 6, minStock: 2, barcode: "7702002004", allowBarberCommission: true, commissionPercent: 10 }
+      ];
+    } else {
+      tenant.inventory = [];
+    }
   }
   return tenant.inventory;
 }
@@ -375,14 +379,24 @@ function getTenantSales(tenant: TenantData): any[] {
   return tenant.sales;
 }
 
-// Helper function to extract Tenant ID
+// Helper function to extract Tenant ID cleanly
 function getTenantId(req: express.Request): string {
-  const headerTenant = req.headers["x-tenant-id"] || req.headers["x-tenant-slug"];
-  if (headerTenant && typeof headerTenant === "string") {
+  const sanitize = (val: any): string | null => {
+    if (val && typeof val === "string") {
+      const trimmed = val.trim();
+      if (trimmed && trimmed !== "undefined" && trimmed !== "null") {
+        return trimmed;
+      }
+    }
+    return null;
+  };
+
+  const headerTenant = sanitize(req.headers["x-tenant-id"]) || sanitize(req.headers["x-tenant-slug"]);
+  if (headerTenant) {
     return headerTenant;
   }
-  const queryTenant = req.query.salonId || req.query.tenantId;
-  if (queryTenant && typeof queryTenant === "string") {
+  const queryTenant = sanitize(req.query.salonId) || sanitize(req.query.tenantId);
+  if (queryTenant) {
     return queryTenant;
   }
   return "bella-barba";
@@ -1490,7 +1504,10 @@ const createTenant = (
     memberships: baseMemberships,
     appointments: [],
     clients: [],
-    reviews: []
+    reviews: [],
+    inventory: [],
+    sales: [],
+    cashClosures: []
   };
 
   // If it's a new tenant, automatically create a default administrator account
@@ -1581,7 +1598,18 @@ app.post("/api/licenses/generate", (req, res) => {
     templateType || "gold",
     createdAtISO.split("T")[0],
     expirationDate,
-    email
+    {
+      ownerName: ownerName || "",
+      ownerEmail: email,
+      phone: phone || "",
+      city: city || "",
+      address: address || "",
+      tagline: tagline || "",
+      openTime: openTime || "08:00",
+      closeTime: closeTime || "20:00",
+      initialBarbersCount: initialBarbersCount ? Number(initialBarbersCount) : 2,
+      customAdminPassword: customAdminPassword || "admin"
+    }
   );
 
   generatedLicenses.push(newLicense);
@@ -2120,26 +2148,42 @@ app.post("/api/login", (req, res) => {
 
   // Check if general admin (for fallback/safety)
   if (username.toLowerCase() === "admin" && password === "admin") {
+    const targetTenantId = getTenantId(req);
     return res.json({
       success: true,
       role: "admin",
-      user: { id: "admin", name: "Administrador del Salón", username: "admin", salonId: "bella-barba" }
+      user: { id: "admin", name: "Administrador del Salón", username: "admin", salonId: targetTenantId }
     });
   }
 
-  // Check barbers across the appropriate tenant (or check all if not specified, but best to check the extracted tenant)
+  // Check barbers: first check the requested tenant, then fallback to searching all tenants
   const tenantId = getTenantId(req);
-  const tenant = tenantData[tenantId] || tenantData["bella-barba"];
-  const barber = tenant.barbers.find(b => b.username.toLowerCase() === username.toLowerCase() && b.password === password);
-  if (barber) {
-    if (!barber.isActive) {
+  let targetTenant = tenantData[tenantId];
+  let foundBarber = targetTenant ? targetTenant.barbers.find(b => b.username.toLowerCase() === username.toLowerCase() && b.password === password) : null;
+  let matchedTenantId = tenantId;
+
+  if (!foundBarber) {
+    for (const [tId, tData] of Object.entries(tenantData)) {
+      if (tData && Array.isArray(tData.barbers)) {
+        const b = tData.barbers.find(item => item.username.toLowerCase() === username.toLowerCase() && item.password === password);
+        if (b) {
+          foundBarber = b;
+          matchedTenantId = tId;
+          break;
+        }
+      }
+    }
+  }
+
+  if (foundBarber) {
+    if (!foundBarber.isActive) {
       return res.status(403).json({ error: "Este usuario de barbero está inactivo" });
     }
     return res.json({
       success: true,
       role: "barber",
-      barberId: barber.id,
-      user: { id: barber.id, name: barber.name, username: barber.username, salonId: tenantId }
+      barberId: foundBarber.id,
+      user: { id: foundBarber.id, name: foundBarber.name, username: foundBarber.username, salonId: matchedTenantId }
     });
   }
 
