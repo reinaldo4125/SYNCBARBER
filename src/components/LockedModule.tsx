@@ -57,19 +57,19 @@ export default function LockedModule({
               <div className="flex items-start space-x-2">
                 <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
                 <p className="text-elegant-text">
-                  <span className="font-bold text-white">Comisiones & Propinas Avanzadas:</span> Gestiona los pagos individuales a cada barbero de forma automatizada.
+                  <span className="font-bold text-white">Comisiones & Propinas Automatizadas:</span> Liquidación automática con porcentaje configurable por barbero y cobro de productos.
                 </p>
               </div>
               <div className="flex items-start space-x-2">
                 <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
                 <p className="text-elegant-text">
-                  <span className="font-bold text-white">Estadísticas Financieras:</span> Gráficos e informes de ingresos totales de tu peluquería en tiempo real.
+                  <span className="font-bold text-white">Cierres de Caja Ciegos & Auditoría:</span> Arqueo detallado de efectivo, transferencias y reportes Z diarios.
                 </p>
               </div>
               <div className="flex items-start space-x-2">
                 <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
                 <p className="text-elegant-text">
-                  <span className="font-bold text-white">Membresías VIP:</span> Fideliza clientes con planes de suscripción mensual y puntos de lealtad.
+                  <span className="font-bold text-white">Barberos Ilimitados:</span> Agrega todo tu equipo sin límites de usuarios ni comisiones ocultas.
                 </p>
               </div>
             </>
@@ -78,19 +78,25 @@ export default function LockedModule({
               <div className="flex items-start space-x-2">
                 <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
                 <p className="text-elegant-text">
-                  <span className="font-bold text-white">Calendario Interactivo Drag & Drop:</span> Organiza y re-agenda citas visualmente en segundos.
+                  <span className="font-bold text-white">Editor de Catálogo de Cortes (Lookbook):</span> Sube fotos de tus propios trabajos y tendencias para que tus clientes elijan su estilo.
                 </p>
               </div>
               <div className="flex items-start space-x-2">
                 <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
                 <p className="text-elegant-text">
-                  <span className="font-bold text-white">Gestión de Ausencias:</span> Bloquea la agenda de barberos por vacaciones, licencias o enfermedad.
+                  <span className="font-bold text-white">Inventario & Nevera POS:</span> Control de stock de bebidas, pomadas y cargos directos en la silla.
                 </p>
               </div>
               <div className="flex items-start space-x-2">
                 <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
                 <p className="text-elegant-text">
-                  <span className="font-bold text-white">Gestión de Clientes:</span> Accede a un historial clínico o notas detalladas de cada cliente.
+                  <span className="font-bold text-white">Membresías VIP & Clientes:</span> Fichas con historial y clubes de suscripción con descuentos automáticos.
+                </p>
+              </div>
+              <div className="flex items-start space-x-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
+                <p className="text-elegant-text">
+                  <span className="font-bold text-white">Calendario Interactivo & Hasta 5 Barberos:</span> Vista de cuadrícula semanal para reacomodar citas al instante.
                 </p>
               </div>
             </>

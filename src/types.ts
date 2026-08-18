@@ -49,6 +49,8 @@ export interface Barber {
   password?: string;
   isActive: boolean;
   specialties?: string[];
+  avatarUrl?: string;
+  photoUrl?: string;
   commissionPercent?: number; // percentage of service price they earn (e.g. 50)
   blockedDates?: string[]; // list of blocked YYYY-MM-DD dates e.g. sick, resting
   timeBlocks?: TimeBlock[];
@@ -64,6 +66,22 @@ export interface Barber {
 }
 
 export type AppointmentStatus = 'pending' | 'confirmed' | 'canceled' | 'completed' | 'en_espera';
+
+export interface CatalogStyle {
+  id: string;
+  title: string;
+  category: 'fade' | 'clasico' | 'barba' | 'diseno' | 'tendencias' | 'general';
+  categoryLabel?: string;
+  photoUrl: string;
+  description?: string;
+  recommendedFace?: string;
+  recommendedHair?: string;
+  serviceId?: string;
+  serviceName?: string;
+  isActive: boolean;
+  tags?: string[];
+  createdAt?: string;
+}
 
 export interface Appointment {
   id: string;
@@ -95,6 +113,13 @@ export interface Appointment {
   checkedIn?: boolean;
   checkInTime?: string;
   penaltyApplied?: number; // Abono o multa cobrada en esta cita
+
+  // Catálogo de Estilo Elegido por el Cliente
+  selectedStyleId?: string;
+  selectedStyleName?: string;
+  selectedStylePhotoUrl?: string;
+  selectedStyleCategory?: string;
+  selectedStyleNotes?: string;
 }
 
 export interface AppointmentConsumption {
@@ -212,6 +237,9 @@ export interface SalonConfig {
   billingCustomMessage?: string;
   billingPaymentLink?: string;
   billingAccountInfo?: string;
+
+  // Catálogo de Cortes & Estilos Lookbook
+  catalogStyles?: CatalogStyle[];
 }
 
 export interface DashboardStats {

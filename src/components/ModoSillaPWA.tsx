@@ -966,6 +966,56 @@ export default function ModoSillaPWA({
               </div>
             )}
 
+            {/* FOTO DE REFERENCIA ELEGIDA POR EL CLIENTE EN EL CATÁLOGO (LOOKBOOK) */}
+            {(activeAppointment.selectedStyleName || activeAppointment.selectedStylePhotoUrl) && (
+              <div className="bg-gradient-to-r from-[#1E1B18] via-[#2A241C] to-[#1E1B18] border-2 border-amber-500/60 p-3.5 rounded-2xl flex items-center gap-3.5 shadow-xl">
+                {activeAppointment.selectedStylePhotoUrl ? (
+                  <a
+                    href={activeAppointment.selectedStylePhotoUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="group relative shrink-0 block"
+                    title="Ver imagen en tamaño completo"
+                  >
+                    <img
+                      src={activeAppointment.selectedStylePhotoUrl}
+                      alt={activeAppointment.selectedStyleName || "Corte de referencia"}
+                      className="w-16 h-16 rounded-xl object-cover border-2 border-amber-400 shadow-md group-hover:scale-105 transition-transform"
+                      referrerPolicy="no-referrer"
+                    />
+                    <span className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs text-white font-bold transition-opacity">
+                      🔍
+                    </span>
+                  </a>
+                ) : (
+                  <div className="w-16 h-16 rounded-xl bg-amber-950/60 border border-amber-400/40 flex items-center justify-center text-amber-400 shrink-0">
+                    <Scissors className="h-7 w-7" />
+                  </div>
+                )}
+
+                <div className="space-y-0.5 min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9.5px] font-black uppercase bg-amber-400 text-black px-2 py-0.5 rounded-md shadow-xs">
+                      ✂️ CORTE SOLICITADO POR EL CLIENTE
+                    </span>
+                    {activeAppointment.selectedStyleCategory && (
+                      <span className="text-[9px] text-amber-300 font-mono uppercase font-bold">
+                        {activeAppointment.selectedStyleCategory}
+                      </span>
+                    )}
+                  </div>
+                  <h4 className="text-sm font-black text-white truncate">
+                    {activeAppointment.selectedStyleName}
+                  </h4>
+                  {activeAppointment.selectedStyleNotes && (
+                    <p className="text-[10.5px] text-amber-200/90 line-clamp-2 italic">
+                      "{activeAppointment.selectedStyleNotes}"
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* TOTALIZADO Y CONSUMOS DE LA SILLA (NEVERA / BEBIDAS) */}
             {(() => {
               const consumptionsTotal = activeAppointment.consumptions ? activeAppointment.consumptions.reduce((sum, c) => sum + ((c.price || 0) * (c.quantity || 1)), 0) : (activeAppointment.consumptionsTotal || 0);
@@ -1890,8 +1940,14 @@ export default function ModoSillaPWA({
                     >
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-10 rounded-xl bg-cyan-950 border border-cyan-500/40 flex items-center justify-center text-cyan-300 font-extrabold text-xs shrink-0 overflow-hidden">
-                          {(barber as any).avatar ? (
-                            <img src={(barber as any).avatar} alt={barber.name} className="h-full w-full object-cover rounded-xl" />
+                          {(barber.photoUrl || barber.avatarUrl || (barber as any).avatar) ? (
+                            <img 
+                              src={barber.photoUrl || barber.avatarUrl || (barber as any).avatar} 
+                              alt={barber.name} 
+                              className="h-full w-full object-cover rounded-xl"
+                              referrerPolicy="no-referrer"
+                              onError={(e) => { (e.target as HTMLElement).style.display = "none"; }}
+                            />
                           ) : (
                             barber.name.substring(0, 2).toUpperCase()
                           )}

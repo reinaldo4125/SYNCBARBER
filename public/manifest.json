@@ -1,17 +1,19 @@
 {
-  "short_name": "SYNCBARBER",
-  "name": "SYNCBARBER - Modo Silla PWA Barberos",
+  "short_name": "Barbería App",
+  "name": "SYNCBARBER - Agendamiento de Citas & Barbería",
   "icons": [
     {
       "src": "/favicon.svg",
       "type": "image/svg+xml",
-      "sizes": "192x192 512x512"
+      "sizes": "192x192 512x512",
+      "purpose": "any maskable"
     }
   ],
-  "start_url": "/?role=barber&mode=silla",
+  "start_url": "/",
+  "scope": "/",
   "background_color": "#0F0F12",
   "theme_color": "#0F0F12",
   "display": "standalone",
   "orientation": "portrait",
-  "description": "PWA de 1-Clic para Barberos en Silla - Ficha Técnica y Galería Visual"
+  "description": "Agendamiento en tiempo real de citas, membresías y gestión de barbería"
 }

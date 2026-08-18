@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Appointment, Service, SalonConfig, AppointmentStatus, Barber, MembershipPlan, ClientAccount, BarberReview } from "../types";
+import { Appointment, Service, SalonConfig, AppointmentStatus, Barber, MembershipPlan, ClientAccount, BarberReview, CatalogStyle } from "../types";
+import PWAInstallBanner, { PWAHeaderButton, PWABookingSuccessPrompt } from "./PWAInstallBanner";
+import ClientStyleLookbookModal from "./ClientStyleLookbookModal";
 import { 
   Scissors, 
   Clock, 
@@ -21,7 +23,10 @@ import {
   Check,
   Gift,
   Percent,
-  History
+  History,
+  Camera,
+  Image as ImageIcon,
+  BookOpen
 } from "lucide-react";
 
 interface ClientDashboardProps {
@@ -109,6 +114,8 @@ export default function ClientDashboard({
 
   // Booking process state
   const [selectedService, setSelectedService] = useState<Service | null>(null);
+  const [selectedCatalogStyle, setSelectedCatalogStyle] = useState<CatalogStyle | null>(null);
+  const [showLookbookModal, setShowLookbookModal] = useState<boolean>(false);
   const [selectedBarberId, setSelectedBarberId] = useState<string>("any");
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [selectedTime, setSelectedTime] = useState<string>("");
@@ -242,18 +249,34 @@ export default function ClientDashboard({
   );
 
   // Compute next 7 available business days
+  // Format working days readable text
+  const formatWorkingDays = (days?: number[]) => {
+    const list = days && days.length > 0 ? days : [1, 2, 3, 4, 5, 6];
+    if (list.length === 7) return "Lunes a Domingo";
+    const dayNames: Record<number, string> = {
+      1: "Lun", 2: "Mar", 3: "Mié", 4: "Jue", 5: "Vie", 6: "Sáb", 0: "Dom"
+    };
+    const sorted = [...list].sort((a, b) => a - b);
+    if (sorted.length === 5 && sorted.every((d, idx) => d === idx + 1)) return "Lunes a Viernes";
+    if (sorted.length === 6 && sorted.every((d, idx) => d === idx + 1)) return "Lunes a Sábado";
+    return sorted.map((d) => dayNames[d] || `Día ${d}`).join(", ");
+  };
+
   const getAvailableDates = () => {
-    const dates = [];
+    const dates: string[] = [];
     const today = new Date();
+    const activeWorkingDays = config.workingDays && config.workingDays.length > 0 
+      ? config.workingDays 
+      : [1, 2, 3, 4, 5, 6];
     
-    // Check up to 14 days out to find 7 valid working days
-    for (let i = 0; i < 14; i++) {
+    // Check up to 21 days out to find up to 7 valid working days
+    for (let i = 0; i < 21; i++) {
       const targetDate = new Date();
       targetDate.setDate(today.getDate() + i);
       const dayOfWeek = targetDate.getDay(); // 0 is Sunday, 1 is Monday...
 
-      // Express server working days. e.g. [1,2,3,4,5,6] (Mon-Sat)
-      if (config.workingDays.includes(dayOfWeek)) {
+      // Express server working days
+      if (activeWorkingDays.includes(dayOfWeek)) {
         dates.push(targetDate.toISOString().split("T")[0]);
       }
 
@@ -274,18 +297,24 @@ export default function ClientDashboard({
   // Generate potential time slots for the day
   const getTimeSlots = () => {
     const slots: string[] = [];
-    const [openH, openM] = config.openTime.split(":").map(Number);
-    const [closeH, closeM] = config.closeTime.split(":").map(Number);
+    const [openH, openM] = (config.openTime || "08:00").split(":").map(Number);
+    const [closeH, closeM] = (config.closeTime || "20:00").split(":").map(Number);
 
-    let currentMinutes = openH * 60 + openM;
-    const closeMinutes = closeH * 60 + closeM;
+    const safeOpenH = isNaN(openH) ? 8 : openH;
+    const safeOpenM = isNaN(openM) ? 0 : openM;
+    const safeCloseH = isNaN(closeH) ? 20 : closeH;
+    const safeCloseM = isNaN(closeM) ? 0 : closeM;
+    const step = config.intervalMinutes && config.intervalMinutes >= 10 ? config.intervalMinutes : 30;
+
+    let currentMinutes = safeOpenH * 60 + safeOpenM;
+    const closeMinutes = safeCloseH * 60 + safeCloseM;
 
     while (currentMinutes < closeMinutes) {
       const h = Math.floor(currentMinutes / 60);
       const m = currentMinutes % 60;
       const timeString = `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
       slots.push(timeString);
-      currentMinutes += config.intervalMinutes;
+      currentMinutes += step;
     }
     return slots;
   };
@@ -454,6 +483,11 @@ export default function ClientDashboard({
         notes: clientNotes,
         barberId: selectedBarberId,
         redeemReward, // Propuesta B
+        selectedStyleId: selectedCatalogStyle?.id,
+        selectedStyleName: selectedCatalogStyle?.title,
+        selectedStylePhotoUrl: selectedCatalogStyle?.photoUrl,
+        selectedStyleCategory: selectedCatalogStyle?.category,
+        selectedStyleNotes: selectedCatalogStyle?.description
       });
 
       if (newApp && newApp.id) {
@@ -471,6 +505,7 @@ export default function ClientDashboard({
         
         // Reset process
         setSelectedService(null);
+        setSelectedCatalogStyle(null);
         setSelectedTime("");
         setClientNotes("");
         setRedeemReward(false);
@@ -782,58 +817,74 @@ export default function ClientDashboard({
           <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight font-sans text-white text-custom-brand">
             Bienvenido a {config.name}
           </h1>
-          <p className="text-xs md:text-sm text-elegant-text-muted max-w-lg">
-            Agenda tu cita en tiempo real. Selecciona el servicio que deseas, elige fecha y hora disponibles, y el peluquero la confirmará al instante.
-          </p>
+          {config.tagline ? (
+            <p className="text-xs md:text-sm text-elegant-gold/90 font-medium italic max-w-lg">
+              "{config.tagline}"
+            </p>
+          ) : (
+            <p className="text-xs md:text-sm text-elegant-text-muted max-w-lg">
+              Agenda tu cita en tiempo real. Selecciona el servicio que deseas, elige fecha y hora disponibles, y el peluquero la confirmará al instante.
+            </p>
+          )}
         </div>
         
         {/* Salon Details Badge */}
         <div className="bg-elegant-sub/80 border border-elegant-border p-4 rounded-2xl space-y-1 relative z-10 text-xs shrink-0 w-full md:w-auto">
           <p className="font-bold text-elegant-gold uppercase tracking-wider text-[10px]">Horario de Atención</p>
-          <p className="font-medium text-white">Lunes a Sábado</p>
-          <p className="font-mono text-elegant-text-muted">{config.openTime} - {config.closeTime}</p>
+          <p className="font-medium text-white">{formatWorkingDays(config.workingDays)}</p>
+          <p className="font-mono text-elegant-text-muted">{config.openTime || "08:00"} - {config.closeTime || "20:00"}</p>
         </div>
       </div>
 
+      {/* Banner de Instalación PWA para Clientes */}
+      <PWAInstallBanner config={config} />
+
       {/* Navigation Tabs bar */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-elegant-border pb-1">
-        <button
-          onClick={() => setClientTab("booking")}
-          className={`flex items-center gap-2 px-5 py-3 rounded-t-2xl font-sans text-sm font-semibold transition-all duration-200 border-b-2 ${
-            clientTab === "booking"
-              ? "bg-elegant-card text-elegant-gold border-elegant-gold"
-              : "text-elegant-text-muted hover:text-white border-transparent hover:bg-elegant-sub/30"
-          }`}
-        >
-          <Scissors className="h-4 w-4" />
-          <span>Agendar Turno</span>
-        </button>
-        <button
-          onClick={() => setClientTab("memberships")}
-          className={`flex items-center gap-2 px-5 py-3 rounded-t-2xl font-sans text-sm font-semibold transition-all duration-200 border-b-2 ${
-            clientTab === "memberships"
-              ? "bg-elegant-card text-elegant-gold border-elegant-gold"
-              : "text-elegant-text-muted hover:text-white border-transparent hover:bg-elegant-sub/30"
-          }`}
-        >
-          <Award className="h-4 w-4" />
-          <span>Membresías & Beneficios</span>
-          <span className="bg-elegant-gold/20 text-elegant-gold text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider scale-95">Promo</span>
-        </button>
-        <button
-          onClick={() => setClientTab("account")}
-          className={`flex items-center gap-2 px-5 py-3 rounded-t-2xl font-sans text-sm font-semibold transition-all duration-200 border-b-2 ${
-            clientTab === "account"
-              ? "bg-elegant-card text-elegant-gold border-elegant-gold"
-              : "text-elegant-text-muted hover:text-white border-transparent hover:bg-elegant-sub/30"
-          }`}
-        >
-          <User className="h-4 w-4" />
-          <span>{loggedClient ? `Portal: ${loggedClient.name}` : "Portal de Cliente"}</span>
-          {loggedClient && loggedClient.membershipActive && (
-            <span className="bg-emerald-950 text-emerald-400 border border-emerald-800 text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase">Socio</span>
-          )}
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-elegant-border pb-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setClientTab("booking")}
+            className={`flex items-center gap-2 px-5 py-3 rounded-t-2xl font-sans text-sm font-semibold transition-all duration-200 border-b-2 ${
+              clientTab === "booking"
+                ? "bg-elegant-card text-elegant-gold border-elegant-gold"
+                : "text-elegant-text-muted hover:text-white border-transparent hover:bg-elegant-sub/30"
+            }`}
+          >
+            <Scissors className="h-4 w-4" />
+            <span>Agendar Turno</span>
+          </button>
+          <button
+            onClick={() => setClientTab("memberships")}
+            className={`flex items-center gap-2 px-5 py-3 rounded-t-2xl font-sans text-sm font-semibold transition-all duration-200 border-b-2 ${
+              clientTab === "memberships"
+                ? "bg-elegant-card text-elegant-gold border-elegant-gold"
+                : "text-elegant-text-muted hover:text-white border-transparent hover:bg-elegant-sub/30"
+            }`}
+          >
+            <Award className="h-4 w-4" />
+            <span>Membresías & Beneficios</span>
+            <span className="bg-elegant-gold/20 text-elegant-gold text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider scale-95">Promo</span>
+          </button>
+          <button
+            onClick={() => setClientTab("account")}
+            className={`flex items-center gap-2 px-5 py-3 rounded-t-2xl font-sans text-sm font-semibold transition-all duration-200 border-b-2 ${
+              clientTab === "account"
+                ? "bg-elegant-card text-elegant-gold border-elegant-gold"
+                : "text-elegant-text-muted hover:text-white border-transparent hover:bg-elegant-sub/30"
+            }`}
+          >
+            <User className="h-4 w-4" />
+            <span>{loggedClient ? `Portal: ${loggedClient.name}` : "Portal de Cliente"}</span>
+            {loggedClient && loggedClient.membershipActive && (
+              <span className="bg-emerald-950 text-emerald-400 border border-emerald-800 text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase">Socio</span>
+            )}
+          </button>
+        </div>
+
+        {/* Acceso Directo / PWA Quick Action */}
+        <div className="pb-1.5 sm:pb-0">
+          <PWAHeaderButton config={config} />
+        </div>
       </div>
 
       {clientTab === "booking" && (
@@ -871,6 +922,39 @@ export default function ClientDashboard({
                     Hemos guardado esta cita en tu navegador. Puedes revisar el estado de aprobación por el peluquero en la sección "Mis Citas" a la derecha.
                   </p>
                 </div>
+
+                {/* Estilo de Catálogo Elegido por el Cliente */}
+                {bookingSuccess.selectedStyleName && (
+                  <div className="bg-neutral-900/90 border border-amber-500/40 rounded-2xl p-3.5 max-w-sm mx-auto text-left flex items-center gap-3.5 shadow-md">
+                    {bookingSuccess.selectedStylePhotoUrl ? (
+                      <img 
+                        src={bookingSuccess.selectedStylePhotoUrl} 
+                        alt={bookingSuccess.selectedStyleName} 
+                        className="w-16 h-16 rounded-xl object-cover border border-amber-400/50 shrink-0" 
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded-xl bg-amber-950/40 border border-amber-400/30 flex items-center justify-center text-amber-400 shrink-0">
+                        <Scissors className="h-6 w-6" />
+                      </div>
+                    )}
+                    <div className="space-y-0.5 min-w-0">
+                      <span className="text-[9.5px] font-extrabold uppercase bg-amber-400/20 text-amber-300 px-2 py-0.5 rounded-md border border-amber-400/30">
+                        ✂️ Corte de Referencia
+                      </span>
+                      <h4 className="text-xs font-bold text-white truncate">
+                        {bookingSuccess.selectedStyleName}
+                      </h4>
+                      <p className="text-[10px] text-neutral-400">
+                        El barbero verá esta foto en su tablet al momento de atenderte.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Acceso Directo Móvil en Pantalla de Inicio */}
+                <PWABookingSuccessPrompt config={config} />
+
                 <button
                   onClick={() => setBookingSuccess(null)}
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold cursor-pointer transition-colors"
@@ -883,6 +967,86 @@ export default function ClientDashboard({
             {!bookingSuccess && (
               <div className="space-y-6">
                 
+                {/* Banner Lookbook: ¿No sabes qué corte hacerte? */}
+                <div className="bg-gradient-to-r from-neutral-900 via-elegant-card to-neutral-900 border border-elegant-gold/40 rounded-2xl p-4 md:p-5 relative overflow-hidden shadow-lg">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3.5">
+                      <div className="h-11 w-11 rounded-2xl bg-elegant-gold/20 border border-elegant-gold/40 flex items-center justify-center text-elegant-gold shrink-0 shadow-md">
+                        <Camera className="h-5 w-5" />
+                      </div>
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] bg-elegant-gold text-black font-extrabold px-2 py-0.2 rounded uppercase tracking-wider">
+                            ¿Indeciso?
+                          </span>
+                          <span className="text-[11px] text-amber-400 font-bold flex items-center gap-1">
+                            <Sparkles className="h-3 w-3" /> Catálogo Visual de Estilos
+                          </span>
+                        </div>
+                        <h4 className="text-sm font-black text-white">
+                          ¿No sabes qué corte pedirte hoy?
+                        </h4>
+                        <p className="text-[11px] text-elegant-text-muted">
+                          Abre nuestro catálogo con fotos reales de Fades, Pompadour, Barbas y Diseños para elegir el tuyo.
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowLookbookModal(true)}
+                      className="w-full sm:w-auto px-4 py-2.5 bg-elegant-gold hover:bg-amber-400 text-black font-extrabold text-xs rounded-xl transition-all shadow-md shadow-amber-500/10 flex items-center justify-center gap-1.5 cursor-pointer shrink-0 active:scale-95"
+                    >
+                      <Scissors className="h-4 w-4" />
+                      <span>Ver Catálogo de Cortes</span>
+                    </button>
+                  </div>
+
+                  {/* Estilo Seleccionado Actualmente */}
+                  {selectedCatalogStyle && (
+                    <div className="mt-4 pt-3.5 border-t border-neutral-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-neutral-900/80 p-3 rounded-xl border border-amber-500/30">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <img
+                          src={selectedCatalogStyle.photoUrl}
+                          alt={selectedCatalogStyle.title}
+                          className="w-12 h-12 rounded-lg object-cover border border-amber-400/40 shrink-0"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="space-y-0.5 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-700 px-1.5 py-0.2 rounded font-bold">
+                              ✓ Foto de Referencia Adjunta
+                            </span>
+                            <span className="text-[9px] text-neutral-400 uppercase">
+                              {selectedCatalogStyle.categoryLabel || selectedCatalogStyle.category}
+                            </span>
+                          </div>
+                          <p className="text-xs font-black text-white truncate">
+                            {selectedCatalogStyle.title}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setShowLookbookModal(true)}
+                          className="text-[11px] font-bold text-amber-400 hover:text-amber-300 underline cursor-pointer"
+                        >
+                          Cambiar corte
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedCatalogStyle(null)}
+                          className="text-[11px] font-bold text-neutral-400 hover:text-red-400 cursor-pointer ml-2"
+                        >
+                          Quitar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Paso 1: Selección de Servicio */}
                 <div className="space-y-3">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-elegant-text-muted flex items-center gap-1.5">
@@ -916,50 +1080,60 @@ export default function ClientDashboard({
                   </div>
 
                   {/* Servicios en Grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {filteredServices.map((service) => {
-                      const isSelected = selectedService?.id === service.id;
-                      return (
-                        <div
-                          key={service.id}
-                          id={`client-service-${service.id}`}
-                          onClick={() => {
-                            setSelectedService(service);
-                            setSelectedTime(""); // reset time when service changes
-                          }}
-                          className={`border rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between space-y-3 ${
-                            isSelected
-                              ? "border-elegant-gold bg-elegant-gold/10 ring-1 ring-elegant-gold"
-                              : "border-elegant-border bg-elegant-sub hover:border-neutral-700 hover:bg-elegant-card"
-                          }`}
-                        >
-                          <div className="space-y-1">
-                            <div className="flex justify-between items-start gap-2">
-                              <h4 className="font-bold text-xs text-white">{service.name}</h4>
-                              <span className="text-xs font-bold font-mono text-elegant-gold whitespace-nowrap shrink-0">
-                                {formatPrice(service.price)}
-                              </span>
+                  {filteredServices.length === 0 ? (
+                    <div className="p-8 text-center bg-elegant-sub/50 border border-dashed border-elegant-border rounded-2xl space-y-2">
+                      <Scissors className="h-8 w-8 mx-auto text-elegant-gold/60 animate-pulse" />
+                      <p className="text-xs font-bold text-white">No hay servicios registrados en esta categoría aún.</p>
+                      <p className="text-[11px] text-elegant-text-muted">
+                        El administrador de la barbería está configurando el menú de atención.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {filteredServices.map((service) => {
+                        const isSelected = selectedService?.id === service.id;
+                        return (
+                          <div
+                            key={service.id}
+                            id={`client-service-${service.id}`}
+                            onClick={() => {
+                              setSelectedService(service);
+                              setSelectedTime(""); // reset time when service changes
+                            }}
+                            className={`border rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between space-y-3 ${
+                              isSelected
+                                ? "border-elegant-gold bg-elegant-gold/10 ring-1 ring-elegant-gold"
+                                : "border-elegant-border bg-elegant-sub hover:border-neutral-700 hover:bg-elegant-card"
+                            }`}
+                          >
+                            <div className="space-y-1">
+                              <div className="flex justify-between items-start gap-2">
+                                <h4 className="font-bold text-xs text-white">{service.name}</h4>
+                                <span className="text-xs font-bold font-mono text-elegant-gold whitespace-nowrap shrink-0">
+                                  {formatPrice(service.price)}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-elegant-text-muted line-clamp-2 leading-relaxed">
+                                {service.description}
+                              </p>
                             </div>
-                            <p className="text-[10px] text-elegant-text-muted line-clamp-2 leading-relaxed">
-                              {service.description}
-                            </p>
-                          </div>
-                          
-                          <div className="flex items-center justify-between pt-1 border-t border-elegant-border text-[10px] text-elegant-text-muted font-mono">
-                            <span className="flex items-center gap-1">
-                              <Clock className="h-3 w-3 text-elegant-text-muted" />
-                              {service.duration} minutos
-                            </span>
-                            {isSelected && (
-                              <span className="text-elegant-gold font-sans font-bold flex items-center gap-0.5">
-                                Seleccionado <CheckCircle className="h-3 w-3 fill-elegant-gold text-elegant-bg" />
+                            
+                            <div className="flex items-center justify-between pt-1 border-t border-elegant-border text-[10px] text-elegant-text-muted font-mono">
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-3 w-3 text-elegant-text-muted" />
+                                {service.duration} minutos
                               </span>
-                            )}
+                              {isSelected && (
+                                <span className="text-elegant-gold font-sans font-bold flex items-center gap-0.5">
+                                  Seleccionado <CheckCircle className="h-3 w-3 fill-elegant-gold text-elegant-bg" />
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* Paso 2: Selección de Barbero */}
@@ -979,16 +1153,20 @@ export default function ClientDashboard({
                         }}
                         className={`border rounded-2xl p-4 cursor-pointer transition-all flex items-center gap-3 ${
                           selectedBarberId === "any"
-                            ? "border-elegant-gold bg-elegant-gold/10 ring-1 ring-elegant-gold"
+                            ? "border-elegant-gold bg-elegant-gold/10 ring-1 ring-elegant-gold shadow-md shadow-elegant-gold/5"
                             : "border-elegant-border bg-elegant-sub hover:border-neutral-700 hover:bg-elegant-card"
                         }`}
                       >
-                        <div className="h-9 w-9 rounded-xl bg-elegant-border text-elegant-gold flex items-center justify-center font-bold text-sm">
-                          ⭐
+                        <div className="h-11 w-11 rounded-xl bg-elegant-border/80 text-elegant-gold flex items-center justify-center font-bold text-lg border border-elegant-gold/30 shrink-0">
+                          ✨
                         </div>
                         <div>
                           <h4 className="font-bold text-xs text-white leading-tight">Cualquier Barbero</h4>
                           <p className="text-[10px] text-elegant-text-muted mt-0.5">Asignación automática</p>
+                          <span className="text-[9px] text-emerald-400 font-semibold flex items-center gap-1 mt-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                            Mayor disponibilidad
+                          </span>
                         </div>
                       </div>
 
@@ -997,6 +1175,7 @@ export default function ClientDashboard({
                         const isSelected = selectedBarberId === barber.id;
                         const ratingInfo = getBarberRating(barber.id);
                         const isBlockedToday = selectedDate && barber.blockedDates && barber.blockedDates.includes(selectedDate);
+                        const photo = barber.photoUrl || barber.avatarUrl || (barber as any).avatar;
                         
                         return (
                           <div
@@ -1006,24 +1185,59 @@ export default function ClientDashboard({
                               setSelectedBarberId(barber.id);
                               setSelectedTime("");
                             }}
-                            className={`border rounded-2xl p-4 cursor-pointer transition-all flex items-center gap-3 ${
+                            className={`border rounded-2xl p-4 cursor-pointer transition-all flex items-center gap-3 relative overflow-hidden ${
                               isBlockedToday
                                 ? "border-rose-950/40 bg-rose-950/5 opacity-50 cursor-not-allowed"
                                 : isSelected
-                                  ? "border-elegant-gold bg-elegant-gold/10 ring-1 ring-elegant-gold"
+                                  ? "border-elegant-gold bg-elegant-gold/10 ring-1 ring-elegant-gold shadow-lg shadow-elegant-gold/10"
                                   : "border-elegant-border bg-elegant-sub hover:border-neutral-700 hover:bg-elegant-card"
                             }`}
                           >
-                            <div className={`h-9 w-9 rounded-xl text-white flex items-center justify-center font-bold text-xs shrink-0 ${isBlockedToday ? "bg-rose-950/40 text-rose-400" : "bg-elegant-border"}`}>
-                              {barber.name.split(" ").map(w => w[0]).join("").substring(0,2).toUpperCase()}
+                            <div className="relative shrink-0">
+                              <div className={`h-11 w-11 rounded-xl border overflow-hidden flex items-center justify-center font-bold text-xs ${
+                                isBlockedToday 
+                                  ? "bg-rose-950/40 border-rose-800 text-rose-400" 
+                                  : isSelected 
+                                    ? "border-elegant-gold bg-elegant-card shadow-sm" 
+                                    : "border-elegant-border bg-elegant-card"
+                              }`}>
+                                {photo ? (
+                                  <img 
+                                    src={photo} 
+                                    alt={barber.name} 
+                                    className="h-full w-full object-cover"
+                                    referrerPolicy="no-referrer"
+                                    onError={(e) => {
+                                      (e.target as HTMLElement).style.display = "none";
+                                    }}
+                                  />
+                                ) : (
+                                  <span className="font-mono text-xs font-black text-white">
+                                    {barber.name.split(" ").map(w => w[0]).join("").substring(0, 2).toUpperCase()}
+                                  </span>
+                                )}
+                              </div>
+                              {!isBlockedToday && (
+                                <span className="absolute -bottom-0.5 -right-0.5 bg-emerald-500 h-2.5 w-2.5 rounded-full border-2 border-elegant-bg" title="Disponible" />
+                              )}
                             </div>
-                            <div>
-                              <h4 className={`font-bold text-xs leading-tight ${isBlockedToday ? "text-rose-400" : "text-white"}`}>{barber.name}</h4>
+
+                            <div className="flex-1 min-w-0">
+                              <h4 className={`font-bold text-xs truncate leading-tight ${isBlockedToday ? "text-rose-400" : "text-white"}`}>
+                                {barber.name}
+                              </h4>
                               {isBlockedToday ? (
                                 <p className="text-[9px] text-rose-400 font-bold mt-0.5">🔴 Ausente / Descanso</p>
                               ) : (
                                 <>
-                                  <p className="text-[10px] text-elegant-text-muted mt-0.5">Especialista disponible</p>
+                                  <p className="text-[10px] text-elegant-text-muted mt-0.5 truncate">
+                                    {barber.specialties && barber.specialties.length > 0 
+                                      ? barber.specialties.slice(0, 2).map(s => {
+                                          const cat = (config?.serviceCategories || []).find(c => c.id === s);
+                                          return cat ? cat.name : s;
+                                        }).join(" • ")
+                                      : "Especialista"}
+                                  </p>
                                   <div className="flex items-center gap-1 mt-1 text-[10px] text-elegant-gold font-semibold">
                                     <span>★ {ratingInfo.avg}</span>
                                     <span className="text-elegant-text-muted text-[9px] font-normal">
@@ -1270,7 +1484,7 @@ export default function ClientDashboard({
                     })()}
 
                     {/* Resumen Final */}
-                    <div className="bg-elegant-gold/10 border border-elegant-gold/20 p-4 rounded-2xl text-xs space-y-2">
+                    <div className="bg-elegant-gold/10 border border-elegant-gold/20 p-4 rounded-2xl text-xs space-y-2.5">
                       <p className="font-bold text-elegant-gold flex items-center gap-1.5">
                         <UserCheck className="h-4 w-4 text-elegant-gold" />
                         Resumen de Reserva:
@@ -1278,9 +1492,41 @@ export default function ClientDashboard({
                       <p className="text-elegant-text">
                         Servicio: <strong>{selectedService.name}</strong> ({selectedService.duration} min)
                       </p>
-                      <p className="text-elegant-text">
-                        Peluquero/Barbero: <strong>{selectedBarberId === "any" ? "Cualquier Barbero" : (barbers.find(b => b.id === selectedBarberId)?.name || "Cualquier Barbero")}</strong>
-                      </p>
+                      
+                      <div className="flex items-center gap-2.5 text-elegant-text">
+                        <span>Peluquero/Barbero:</span>
+                        {(() => {
+                          if (selectedBarberId === "any") {
+                            return (
+                              <span className="font-bold text-white flex items-center gap-1.5 bg-elegant-sub/80 px-2 py-0.5 rounded-lg border border-elegant-border">
+                                <span>✨</span>
+                                <span>Cualquier Barbero (Automático)</span>
+                              </span>
+                            );
+                          }
+                          const b = barbers.find(b => b.id === selectedBarberId);
+                          const photo = b?.photoUrl || b?.avatarUrl || (b as any)?.avatar;
+                          return (
+                            <span className="font-bold text-white flex items-center gap-2 bg-elegant-sub/80 px-2.5 py-1 rounded-xl border border-elegant-gold/30">
+                              <div className="h-6 w-6 rounded-full overflow-hidden bg-elegant-card border border-elegant-gold/40 flex items-center justify-center text-[10px] text-white shrink-0">
+                                {photo ? (
+                                  <img 
+                                    src={photo} 
+                                    alt={b?.name} 
+                                    className="h-full w-full object-cover" 
+                                    referrerPolicy="no-referrer"
+                                    onError={(e) => { (e.target as HTMLElement).style.display = "none"; }}
+                                  />
+                                ) : (
+                                  <span>{b?.name?.substring(0, 2).toUpperCase()}</span>
+                                )}
+                              </div>
+                              <span>{b?.name || "Cualquier Barbero"}</span>
+                            </span>
+                          );
+                        })()}
+                      </div>
+
                       <p className="text-elegant-text">
                         Fecha y Hora: <strong>{formatDateLabel(selectedDate).full}</strong> a las <strong>{selectedTime}</strong>
                       </p>
@@ -1586,11 +1832,32 @@ export default function ClientDashboard({
                         </div>
 
                         {/* Info de servicio */}
-                        <div className="space-y-0.5">
+                        <div className="space-y-1">
                           <p className="font-bold text-white text-xs">{app.serviceName}</p>
-                          <p className="text-[10px] text-elegant-gold font-semibold">
-                            Peluquero: {app.barberName || "Cualquier Barbero"}
-                          </p>
+                          
+                          {/* Barber info with photo */}
+                          <div className="flex items-center gap-1.5 text-[10px] text-elegant-gold font-semibold">
+                            {(() => {
+                              const b = barbers.find(item => item.id === app.barberId || item.name === app.barberName);
+                              const photo = b?.photoUrl || b?.avatarUrl || (b as any)?.avatar;
+                              if (photo) {
+                                return (
+                                  <div className="h-4 w-4 rounded-full overflow-hidden border border-elegant-gold/40 shrink-0">
+                                    <img 
+                                      src={photo} 
+                                      alt={app.barberName || "Barbero"} 
+                                      className="h-full w-full object-cover"
+                                      referrerPolicy="no-referrer"
+                                      onError={(e) => { (e.target as HTMLElement).style.display = "none"; }}
+                                    />
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
+                            <span>Peluquero: {app.barberName || "Cualquier Barbero"}</span>
+                          </div>
+
                           <p className="text-[10px] text-elegant-text-muted font-mono">
                             {formatDateLabel(app.date).full} • {app.duration} mins
                           </p>
@@ -1659,11 +1926,29 @@ export default function ClientDashboard({
                         </div>
 
                         {/* Info de servicio */}
-                        <div className="space-y-0.5">
+                        <div className="space-y-1">
                           <p className="font-bold text-white text-xs">{app.serviceName}</p>
-                          <p className="text-[10px] text-elegant-gold font-semibold">
-                            Peluquero: {app.barberName || "Cualquier Barbero"}
-                          </p>
+                          <div className="flex items-center gap-1.5 text-[10px] text-elegant-gold font-semibold">
+                            {(() => {
+                              const b = barbers.find(item => item.id === app.barberId || item.name === app.barberName);
+                              const photo = b?.photoUrl || b?.avatarUrl || (b as any)?.avatar;
+                              if (photo) {
+                                return (
+                                  <div className="h-4 w-4 rounded-full overflow-hidden border border-elegant-gold/40 shrink-0">
+                                    <img 
+                                      src={photo} 
+                                      alt={app.barberName || "Barbero"} 
+                                      className="h-full w-full object-cover"
+                                      referrerPolicy="no-referrer"
+                                      onError={(e) => { (e.target as HTMLElement).style.display = "none"; }}
+                                    />
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
+                            <span>Peluquero: {app.barberName || "Cualquier Barbero"}</span>
+                          </div>
                           <p className="text-[10px] text-elegant-text-muted font-mono">
                             {formatDateLabel(app.date).full} • {app.duration} mins
                           </p>
@@ -2234,6 +2519,25 @@ export default function ClientDashboard({
           )}
         </div>
       )}
+
+      {/* Modal Lookbook / Catálogo de Estilos de Referencia */}
+      <ClientStyleLookbookModal
+        isOpen={showLookbookModal}
+        onClose={() => setShowLookbookModal(false)}
+        onSelectStyle={(style) => {
+          setSelectedCatalogStyle(style);
+          if (style.serviceId) {
+            const matched = services.find(s => s.id === style.serviceId);
+            if (matched) setSelectedService(matched);
+          } else if (!selectedService && services.length > 0) {
+            setSelectedService(services[0]);
+          }
+        }}
+        services={services}
+        config={config}
+        currentSelectedStyleId={selectedCatalogStyle?.id}
+        formatPrice={formatPrice}
+      />
     </div>
   );
 }

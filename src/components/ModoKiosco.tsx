@@ -523,8 +523,18 @@ export default function ModoKiosco({
                       }`}
                     >
                       <div className="flex items-center space-x-3">
-                        <div className="h-12 w-12 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 font-black text-lg uppercase shrink-0">
-                          {barber.name.slice(0, 2)}
+                        <div className="h-12 w-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 overflow-hidden flex items-center justify-center text-amber-400 font-black text-lg uppercase shrink-0">
+                          {(barber.photoUrl || barber.avatarUrl || (barber as any).avatar) ? (
+                            <img 
+                              src={barber.photoUrl || barber.avatarUrl || (barber as any).avatar} 
+                              alt={barber.name} 
+                              className="h-full w-full object-cover" 
+                              referrerPolicy="no-referrer"
+                              onError={(e) => { (e.target as HTMLElement).style.display = "none"; }}
+                            />
+                          ) : (
+                            barber.name.slice(0, 2)
+                          )}
                         </div>
                         <div>
                           <h3 className="font-extrabold text-base text-white">{barber.name}</h3>

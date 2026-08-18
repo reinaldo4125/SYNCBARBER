@@ -97,23 +97,22 @@ export default function InteractiveCalendar({
 
   // Generate hourly slots based on openTime, closeTime, and interval
   const timeSlots: string[] = [];
-  const startHour = parseInt(config.openTime.split(":")[0]) || 9;
-  const endHour = parseInt(config.closeTime.split(":")[0]) || 20;
-  const interval = config.intervalMinutes || 30;
+  const [openH, openM] = (config.openTime || "08:00").split(":").map(Number);
+  const [closeH, closeM] = (config.closeTime || "20:00").split(":").map(Number);
+  const safeOpenH = isNaN(openH) ? 8 : openH;
+  const safeOpenM = isNaN(openM) ? 0 : openM;
+  const safeCloseH = isNaN(closeH) ? 20 : closeH;
+  const safeCloseM = isNaN(closeM) ? 0 : closeM;
+  const interval = config.intervalMinutes && config.intervalMinutes >= 10 ? config.intervalMinutes : 30;
 
-  for (let h = startHour; h < endHour; h++) {
-    const hourStr = h.toString().padStart(2, "0");
-    if (interval === 30) {
-      timeSlots.push(`${hourStr}:00`);
-      timeSlots.push(`${hourStr}:30`);
-    } else if (interval === 15) {
-      timeSlots.push(`${hourStr}:00`);
-      timeSlots.push(`${hourStr}:15`);
-      timeSlots.push(`${hourStr}:30`);
-      timeSlots.push(`${hourStr}:45`);
-    } else {
-      timeSlots.push(`${hourStr}:00`);
-    }
+  let currentMinutes = safeOpenH * 60 + safeOpenM;
+  const closeMinutes = safeCloseH * 60 + safeCloseM;
+
+  while (currentMinutes < closeMinutes) {
+    const h = Math.floor(currentMinutes / 60);
+    const m = currentMinutes % 60;
+    timeSlots.push(`${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`);
+    currentMinutes += interval;
   }
 
   // --- Week Days Calculator Helper ---

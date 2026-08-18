@@ -11,7 +11,11 @@ import {
   CheckCircle, 
   AlertCircle,
   X,
-  Plus
+  Plus,
+  Camera,
+  Upload,
+  Image as ImageIcon,
+  Sparkles
 } from "lucide-react";
 
 interface BarberManagerProps {
@@ -22,6 +26,33 @@ interface BarberManagerProps {
   activeLicense?: "basica" | "profesional" | "premium";
   config?: SalonConfig;
 }
+
+const PRESET_AVATARS = [
+  {
+    name: "Barbero Clásico",
+    url: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80"
+  },
+  {
+    name: "Estilista Fade",
+    url: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80"
+  },
+  {
+    name: "Master Barber",
+    url: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300&auto=format&fit=crop&q=80"
+  },
+  {
+    name: "Estilista / Barbera",
+    url: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=300&auto=format&fit=crop&q=80"
+  },
+  {
+    name: "Barbero Ejecutivo",
+    url: "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=300&auto=format&fit=crop&q=80"
+  },
+  {
+    name: "Especialista Color",
+    url: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=300&auto=format&fit=crop&q=80"
+  }
+];
 
 export default function BarberManager({
   barbers,
@@ -47,6 +78,7 @@ export default function BarberManager({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [specialties, setSpecialties] = useState<string[]>(["cabello"]);
+  const [photoUrl, setPhotoUrl] = useState("");
   
   // Status and loading
   const [errorMsg, setErrorMsg] = useState("");
@@ -59,9 +91,59 @@ export default function BarberManager({
     setUsername("");
     setPassword("");
     setSpecialties(["cabello"]);
+    setPhotoUrl("");
     setEditingBarber(null);
     setErrorMsg("");
     setSuccessMsg("");
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, isEditing: boolean = false) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const rawDataUrl = event.target?.result as string;
+      if (!rawDataUrl) return;
+
+      const img = new Image();
+      img.onload = () => {
+        const MAX_SIZE = 500;
+        let { width, height } = img;
+
+        if (width > MAX_SIZE || height > MAX_SIZE) {
+          if (width > height) {
+            height = Math.round((height * MAX_SIZE) / width);
+            width = MAX_SIZE;
+          } else {
+            width = Math.round((width * MAX_SIZE) / height);
+            height = MAX_SIZE;
+          }
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressed = canvas.toDataURL("image/jpeg", 0.85);
+          if (isEditing && editingBarber) {
+            setEditingBarber({ ...editingBarber, photoUrl: compressed, avatarUrl: compressed });
+          } else {
+            setPhotoUrl(compressed);
+          }
+        } else {
+          if (isEditing && editingBarber) {
+            setEditingBarber({ ...editingBarber, photoUrl: rawDataUrl, avatarUrl: rawDataUrl });
+          } else {
+            setPhotoUrl(rawDataUrl);
+          }
+        }
+      };
+      img.src = rawDataUrl;
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
@@ -79,7 +161,9 @@ export default function BarberManager({
         name,
         username,
         password,
-        specialties
+        specialties,
+        photoUrl: photoUrl.trim(),
+        avatarUrl: photoUrl.trim()
       });
       setSuccessMsg(`¡Barbero ${name} creado con éxito!`);
       resetForm();
@@ -110,6 +194,8 @@ export default function BarberManager({
         password: editingBarber.password || undefined, // only update if filled
         isActive: editingBarber.isActive,
         specialties: editingBarber.specialties,
+        photoUrl: (editingBarber.photoUrl || editingBarber.avatarUrl || "").trim(),
+        avatarUrl: (editingBarber.photoUrl || editingBarber.avatarUrl || "").trim(),
         blockedDates: editingBarber.blockedDates || []
       });
       setSuccessMsg(`¡Barbero ${editingBarber.name} actualizado!`);
@@ -239,6 +325,93 @@ export default function BarberManager({
             </div>
           </div>
 
+          {/* Foto / Avatar del Barbero */}
+          <div className="space-y-3 bg-elegant-sub/60 p-4 rounded-2xl border border-elegant-border">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-elegant-gold flex items-center gap-1.5">
+                <Camera className="h-4 w-4 text-elegant-gold" />
+                <span>Foto de Perfil del Barbero (Visible al Cliente)</span>
+              </label>
+              <span className="text-[10px] text-elegant-text-muted">Aparecerá en la reserva online</span>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              {/* Preview */}
+              <div className="relative group shrink-0">
+                <div className="h-16 w-16 rounded-2xl bg-elegant-card border-2 border-elegant-gold/40 overflow-hidden flex items-center justify-center text-white shadow-md">
+                  {photoUrl ? (
+                    <img 
+                      src={photoUrl} 
+                      alt="Vista previa" 
+                      className="h-full w-full object-cover"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    <span className="text-base font-bold font-mono text-elegant-text-muted">
+                      {name ? name.split(" ").map(w => w[0]).join("").substring(0, 2).toUpperCase() : <Camera className="h-6 w-6 text-neutral-500" />}
+                    </span>
+                  )}
+                </div>
+                {photoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setPhotoUrl("")}
+                    className="absolute -top-1.5 -right-1.5 bg-rose-600 text-white rounded-full p-0.5 shadow-md hover:bg-rose-500 cursor-pointer"
+                    title="Quitar foto"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+
+              {/* URL or Upload */}
+              <div className="flex-1 space-y-2 w-full">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={photoUrl}
+                    onChange={(e) => setPhotoUrl(e.target.value)}
+                    placeholder="Pega URL de imagen (Ej: https://.../foto.jpg) o sube archivo"
+                    className="flex-1 px-3 py-2 bg-elegant-card border border-elegant-border text-white text-xs rounded-xl focus:outline-none focus:border-elegant-gold"
+                  />
+                  <label className="px-3 py-2 bg-elegant-sub hover:bg-elegant-card border border-elegant-border text-white text-xs rounded-xl font-semibold cursor-pointer transition-colors flex items-center justify-center gap-1.5 shrink-0">
+                    <Upload className="h-3.5 w-3.5 text-elegant-gold" />
+                    <span>Subir Foto</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleFileUpload(e, false)}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+
+                {/* Presets */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[9px] text-elegant-text-muted font-bold uppercase">Presets:</span>
+                  {PRESET_AVATARS.map((p, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setPhotoUrl(p.url)}
+                      className={`text-[9px] px-2 py-0.5 rounded-lg border transition-colors flex items-center gap-1 cursor-pointer ${
+                        photoUrl === p.url 
+                          ? "bg-elegant-gold/20 border-elegant-gold text-elegant-gold font-bold" 
+                          : "bg-elegant-card border-elegant-border/60 text-elegant-text-muted hover:text-white"
+                      }`}
+                    >
+                      <Sparkles className="h-2.5 w-2.5 text-elegant-gold" />
+                      <span>{p.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Especialidades */}
           <div className="space-y-2">
             <label className="text-[10px] font-bold uppercase tracking-wider text-elegant-text-muted block">Categorías de Servicio Permitidas</label>
@@ -340,6 +513,93 @@ export default function BarberManager({
                 <option value="true">Activo</option>
                 <option value="false">Inactivo (Suspendido)</option>
               </select>
+            </div>
+          </div>
+
+          {/* Foto del Barbero en Modo Edición */}
+          <div className="space-y-3 bg-elegant-sub/60 p-4 rounded-2xl border border-elegant-border">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-elegant-gold flex items-center gap-1.5">
+                <Camera className="h-4 w-4 text-elegant-gold" />
+                <span>Foto de Perfil del Barbero</span>
+              </label>
+              <span className="text-[10px] text-elegant-text-muted">Visible para los clientes al agendar</span>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              {/* Preview */}
+              <div className="relative group shrink-0">
+                <div className="h-16 w-16 rounded-2xl bg-elegant-card border-2 border-elegant-gold/40 overflow-hidden flex items-center justify-center text-white shadow-md">
+                  {(editingBarber.photoUrl || editingBarber.avatarUrl) ? (
+                    <img 
+                      src={editingBarber.photoUrl || editingBarber.avatarUrl} 
+                      alt={editingBarber.name} 
+                      className="h-full w-full object-cover"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    <span className="text-base font-bold font-mono text-elegant-text-muted">
+                      {editingBarber.name.split(" ").map(w => w[0]).join("").substring(0, 2).toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                {(editingBarber.photoUrl || editingBarber.avatarUrl) && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingBarber({ ...editingBarber, photoUrl: "", avatarUrl: "" })}
+                    className="absolute -top-1.5 -right-1.5 bg-rose-600 text-white rounded-full p-0.5 shadow-md hover:bg-rose-500 cursor-pointer"
+                    title="Quitar foto"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+
+              {/* URL or Upload */}
+              <div className="flex-1 space-y-2 w-full">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={editingBarber.photoUrl || editingBarber.avatarUrl || ""}
+                    onChange={(e) => setEditingBarber({ ...editingBarber, photoUrl: e.target.value, avatarUrl: e.target.value })}
+                    placeholder="Pega URL de imagen (Ej: https://.../foto.jpg) o sube archivo"
+                    className="flex-1 px-3 py-2 bg-elegant-card border border-elegant-border text-white text-xs rounded-xl focus:outline-none focus:border-elegant-gold"
+                  />
+                  <label className="px-3 py-2 bg-elegant-sub hover:bg-elegant-card border border-elegant-border text-white text-xs rounded-xl font-semibold cursor-pointer transition-colors flex items-center justify-center gap-1.5 shrink-0">
+                    <Upload className="h-3.5 w-3.5 text-elegant-gold" />
+                    <span>Subir Foto</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleFileUpload(e, true)}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+
+                {/* Presets */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[9px] text-elegant-text-muted font-bold uppercase">Presets:</span>
+                  {PRESET_AVATARS.map((p, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setEditingBarber({ ...editingBarber, photoUrl: p.url, avatarUrl: p.url })}
+                      className={`text-[9px] px-2 py-0.5 rounded-lg border transition-colors flex items-center gap-1 cursor-pointer ${
+                        (editingBarber.photoUrl === p.url || editingBarber.avatarUrl === p.url)
+                          ? "bg-elegant-gold/20 border-elegant-gold text-elegant-gold font-bold" 
+                          : "bg-elegant-card border-elegant-border/60 text-elegant-text-muted hover:text-white"
+                      }`}
+                    >
+                      <Sparkles className="h-2.5 w-2.5 text-elegant-gold" />
+                      <span>{p.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -480,14 +740,26 @@ export default function BarberManager({
             <div className="space-y-2">
               <div className="flex justify-between items-start gap-2">
                 <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-elegant-sub border border-elegant-border flex items-center justify-center text-white shrink-0 relative">
-                    <span className="text-xs font-bold font-mono">
-                      {barber.name.split(" ").map(w => w[0]).join("").substring(0, 2).toUpperCase()}
-                    </span>
-                    {barber.isActive ? (
-                      <span className="absolute -bottom-1 -right-1 bg-emerald-500 h-3 w-3 rounded-full border-2 border-elegant-bg" title="Activo" />
+                  <div className="h-11 w-11 rounded-xl bg-elegant-sub border border-elegant-border flex items-center justify-center text-white shrink-0 relative overflow-hidden">
+                    {(barber.photoUrl || barber.avatarUrl) ? (
+                      <img 
+                        src={barber.photoUrl || barber.avatarUrl} 
+                        alt={barber.name} 
+                        className="h-full w-full object-cover"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = "none";
+                        }}
+                      />
                     ) : (
-                      <span className="absolute -bottom-1 -right-1 bg-rose-500 h-3 w-3 rounded-full border-2 border-elegant-bg" title="Inactivo" />
+                      <span className="text-xs font-bold font-mono">
+                        {barber.name.split(" ").map(w => w[0]).join("").substring(0, 2).toUpperCase()}
+                      </span>
+                    )}
+                    {barber.isActive ? (
+                      <span className="absolute bottom-0 right-0 bg-emerald-500 h-3 w-3 rounded-full border-2 border-elegant-bg z-10" title="Activo" />
+                    ) : (
+                      <span className="absolute bottom-0 right-0 bg-rose-500 h-3 w-3 rounded-full border-2 border-elegant-bg z-10" title="Inactivo" />
                     )}
                   </div>
                   <div>

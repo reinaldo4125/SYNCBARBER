@@ -5,20 +5,14 @@ import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
-import { Appointment, Service, SalonConfig, Barber, MembershipPlan, ClientAccount, DailyClosure } from "./src/types";
+import { Appointment, Service, SalonConfig, Barber, MembershipPlan, ClientAccount, DailyClosure, CatalogStyle } from "./src/types";
+import { DEFAULT_CATALOG_STYLES } from "./src/data/defaultCatalogStyles";
 
 const app = express();
 const PORT = 3000;
 
-app.use(express.json());
-
-// Normalizer middleware for Nginx reverse proxies that strip the /api prefix
-app.use((req, res, next) => {
-  if (!req.path.startsWith("/api") && req.path !== "/" && !req.path.includes(".")) {
-    req.url = "/api" + req.url;
-  }
-  next();
-});
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // --- FIREBASE FIRESTORE PERSISTENCE SETUP ---
 let db: any = null;
@@ -49,6 +43,7 @@ interface TenantData {
   inventory?: any[];
   sales?: any[];
   cashClosures?: DailyClosure[];
+  catalogStyles?: CatalogStyle[];
 }
 
 // Seed membership plans
@@ -379,6 +374,14 @@ function getTenantSales(tenant: TenantData): any[] {
   return tenant.sales;
 }
 
+// Helper function to resolve tenant catalog styles with default library fallback
+function getTenantCatalogStyles(tenant: TenantData): CatalogStyle[] {
+  if (!tenant.catalogStyles || !Array.isArray(tenant.catalogStyles) || tenant.catalogStyles.length === 0) {
+    tenant.catalogStyles = JSON.parse(JSON.stringify(DEFAULT_CATALOG_STYLES));
+  }
+  return tenant.catalogStyles;
+}
+
 // Helper function to extract Tenant ID cleanly
 function getTenantId(req: express.Request): string {
   const sanitize = (val: any): string | null => {
@@ -532,12 +535,72 @@ app.get("/api/config", (req, res) => {
 app.put("/api/config", (req, res) => {
   const tenantId = getTenantId(req);
   const tenant = tenantData[tenantId] || tenantData["bella-barba"];
-  const { name, openTime, closeTime, workingDays, intervalMinutes, licenseType, activeLicenseKey, serviceCategories, customLogoUrl, accentColor, textColor, tagline, backgroundColor, cardColor, subCardColor, borderColor, noShowPenaltyAmount } = req.body;
-  
-  if (name) tenant.config.name = name;
+  const { 
+    name, 
+    openTime, 
+    closeTime, 
+    workingDays, 
+    intervalMinutes, 
+    licenseType, 
+    activeLicenseKey, 
+    serviceCategories, 
+    customLogoUrl, 
+    accentColor, 
+    textColor, 
+    tagline, 
+    backgroundColor, 
+    cardColor, 
+    subCardColor, 
+    borderColor, 
+    noShowPenaltyAmount 
+  } = req.body;
+
+  // Validation: Hours / Schedule
+  const effectiveOpen = openTime || tenant.config.openTime || "08:00";
+  const effectiveClose = closeTime || tenant.config.closeTime || "20:00";
+
+  const timeToMinutes = (timeStr: string) => {
+    const parts = (timeStr || "").split(":").map(Number);
+    if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return null;
+    return parts[0] * 60 + parts[1];
+  };
+
+  const openMins = timeToMinutes(effectiveOpen);
+  const closeMins = timeToMinutes(effectiveClose);
+
+  if (openMins === null || closeMins === null) {
+    return res.status(400).json({ error: "Formato de horario inválido (debe ser HH:MM en formato 24 horas)." });
+  }
+
+  if (openMins >= closeMins) {
+    return res.status(400).json({ 
+      error: `La hora de apertura (${effectiveOpen}) no puede ser igual o posterior a la hora de cierre (${effectiveClose}).` 
+    });
+  }
+
+  // Validation: Working Days
+  if (workingDays !== undefined) {
+    if (!Array.isArray(workingDays) || workingDays.length === 0) {
+      return res.status(400).json({ error: "Debes seleccionar al menos un día laboral válido." });
+    }
+    const cleanDays = workingDays
+      .map(Number)
+      .filter((d) => !isNaN(d) && d >= 0 && d <= 6);
+    if (cleanDays.length === 0) {
+      return res.status(400).json({ error: "No se enviaron días laborales válidos (valores 0 a 6)." });
+    }
+    tenant.config.workingDays = Array.from(new Set(cleanDays)).sort((a, b) => a - b);
+  }
+
+  if (name && typeof name === "string" && name.trim()) {
+    tenant.config.name = name.trim();
+    // Also keep developer tenants array synced
+    const devTenant = tenants.find(t => t.id === tenantId);
+    if (devTenant) devTenant.name = name.trim();
+  }
+
   if (openTime) tenant.config.openTime = openTime;
   if (closeTime) tenant.config.closeTime = closeTime;
-  if (workingDays) tenant.config.workingDays = workingDays;
   if (intervalMinutes) tenant.config.intervalMinutes = Number(intervalMinutes);
   if (licenseType) tenant.config.licenseType = licenseType;
   if (activeLicenseKey !== undefined) tenant.config.activeLicenseKey = activeLicenseKey;
@@ -545,14 +608,20 @@ app.put("/api/config", (req, res) => {
   if (customLogoUrl !== undefined) tenant.config.customLogoUrl = customLogoUrl;
   if (accentColor !== undefined) tenant.config.accentColor = accentColor;
   if (textColor !== undefined) tenant.config.textColor = textColor;
-  if (tagline !== undefined) tenant.config.tagline = tagline;
+  if (tagline !== undefined) tenant.config.tagline = typeof tagline === "string" ? tagline.trim() : "";
   if (backgroundColor !== undefined) tenant.config.backgroundColor = backgroundColor;
   if (cardColor !== undefined) tenant.config.cardColor = cardColor;
   if (subCardColor !== undefined) tenant.config.subCardColor = subCardColor;
   if (borderColor !== undefined) tenant.config.borderColor = borderColor;
   if (noShowPenaltyAmount !== undefined) tenant.config.noShowPenaltyAmount = Number(noShowPenaltyAmount);
 
+  // Broadcast in real-time
   broadcastChange("config_update", tenant.config, tenantId);
+
+  // Persist immediately in Firestore and in memory
+  saveTenantToFirestore(tenantId);
+  saveGlobalsToFirestore();
+
   res.json({ message: "Configuración actualizada con éxito", config: tenant.config });
 });
 
@@ -571,6 +640,11 @@ app.post("/api/setup/complete", (req, res) => {
       ...updatedConfig,
       needsSetup: false
     };
+
+    if (updatedConfig.name) {
+      const devTenant = tenants.find(t => t.id === tenantId);
+      if (devTenant) devTenant.name = updatedConfig.name;
+    }
   }
 
   if (updatedServices && Array.isArray(updatedServices)) {
@@ -598,6 +672,10 @@ app.post("/api/setup/complete", (req, res) => {
   broadcastChange("config_update", tenant.config, tenantId);
   broadcastChange("services_update", tenant.services, tenantId);
   broadcastChange("barbers_update", tenant.barbers, tenantId);
+
+  // Persist to Firestore
+  saveTenantToFirestore(tenantId);
+  saveGlobalsToFirestore();
 
   res.json({ success: true, config: tenant.config, services: tenant.services, barbers: tenant.barbers });
 });
@@ -771,6 +849,24 @@ app.post("/api/developer/tenants/:id/purge", (req, res) => {
   }
 
   let purgedCount = 0;
+
+  if (req.body.wipeAllToBlank) {
+    tenant.services = [];
+    tenant.barbers = [];
+    tenant.memberships = [];
+    tenant.appointments = [];
+    tenant.clients = [];
+    tenant.inventory = [];
+    tenant.sales = [];
+    tenant.cashClosures = [];
+    tenant.reviews = [];
+    tenant.catalogStyles = [];
+    tenant.config.needsSetup = true;
+    saveTenantToFirestore(id);
+    saveGlobalsToFirestore();
+    broadcastChange("data_purge", { tenantId: id, wipeAllToBlank: true }, id);
+    return res.json({ message: `La barbería '${tenant.config.name}' ha sido reiniciada completamente en blanco para ser llenada desde cero.` });
+  }
 
   if (factoryReset) {
     tenant.appointments = [];
@@ -1422,7 +1518,8 @@ const generateTenantId = (name: string): string => {
   return finalId;
 };
 
-// Helper to initialize custom tenant data with default services and barbers
+// Helper to initialize custom tenant data.
+// NOTE: When a new tenant is created, everything starts 100% in BLANK ([]) so the owner can fill it in with their real data.
 const createTenant = (
   id: string,
   name: string,
@@ -1444,28 +1541,7 @@ const createTenant = (
     customAdminPassword?: string;
   } = {}
 ) => {
-  const isDefaultTenant = ["bella-barba"].includes(id);
-
-  const baseServices: Service[] = [
-    { id: "s1", name: "Corte de Cabello Básico", price: 20000, duration: 30, category: "cabello" as const, description: "Corte tradicional con tijeras o máquina." },
-    { id: "s2", name: "Perfilado & Ritual de Barba", price: 15000, duration: 30, category: "barba" as const, description: "Arreglo completo de barba con navaja y toalla caliente." },
-    { id: "s3", name: "Combo Imperial (Corte + Barba)", price: 32000, duration: 50, category: "combos" as const, description: "Experiencia completa de corte y barba con hidratación facial." }
-  ];
-
-  const count = extraDetails.initialBarbersCount || 2;
-  const baseBarbers: Barber[] = Array.from({ length: Math.min(Math.max(count, 1), 10) }, (_, i) => ({
-    id: `b${i + 1}`,
-    name: i === 0 ? (extraDetails.ownerName ? `${extraDetails.ownerName} (Máster)` : "Barbero Principal") : `Barbero ${i + 1}`,
-    username: `barbero${i + 1}`,
-    password: "123",
-    isActive: true,
-    specialties: ["cabello" as const, "barba" as const]
-  }));
-
-  const baseMemberships = [
-    { id: "p1", name: "Club VIP Ilimitado", monthlyPrice: 80000, discountPercent: 20, description: "Cortes ilimitados al mes y beneficios exclusivos", benefits: ["Cortes de cabello ilimitados", "10% dto. en productos", "Atención prioritaria"] },
-    { id: "p2", name: "Pase Estilizado", monthlyPrice: 50000, discountPercent: 10, description: "2 cortes al mes + perfilado de barba", benefits: ["2 Cortes al mes", "1 Perfilado de barba gratis"] }
-  ];
+  const isDefaultTenant = id === "bella-barba";
 
   const accentColor = templateType === "urban" ? "cyan" : templateType === "traditional" ? "amber" : "gold";
 
@@ -1484,30 +1560,32 @@ const createTenant = (
       activeLicenseKey: licenseKey,
       activationDate: actDate,
       expirationDate: expDate,
-      ownerName: extraDetails.ownerName,
+      ownerName: extraDetails.ownerName || "",
       ownerEmail: email,
-      phone: extraDetails.phone,
-      whatsapp: extraDetails.phone,
-      city: extraDetails.city,
-      address: extraDetails.address,
-      needsSetup: false,
+      phone: extraDetails.phone || "",
+      whatsapp: extraDetails.phone || "",
+      city: extraDetails.city || "",
+      address: extraDetails.address || "",
+      needsSetup: !isDefaultTenant, // New tenant is in blank mode and will be guided to fill everything
       accentColor: accentColor,
       textColor: "#FFFFFF",
       backgroundColor: "#0B0C10",
       cardColor: "#141414",
       subCardColor: "#1A1A1A",
       borderColor: "#262626",
-      tagline: extraDetails.tagline || "Arte, Precisión & Estilo Masculino",
+      tagline: extraDetails.tagline || "",
     },
-    services: isDefaultTenant && id === "bella-barba" && tenantData["bella-barba"] ? tenantData["bella-barba"].services : baseServices,
-    barbers: isDefaultTenant && id === "bella-barba" && tenantData["bella-barba"] ? tenantData["bella-barba"].barbers : baseBarbers,
-    memberships: baseMemberships,
+    // For new tenants, everything is completely blank so the owner configures all items from scratch with their client
+    services: isDefaultTenant && tenantData["bella-barba"] ? tenantData["bella-barba"].services : [],
+    barbers: isDefaultTenant && tenantData["bella-barba"] ? tenantData["bella-barba"].barbers : [],
+    memberships: isDefaultTenant && tenantData["bella-barba"] ? tenantData["bella-barba"].memberships : [],
     appointments: [],
     clients: [],
     reviews: [],
     inventory: [],
     sales: [],
-    cashClosures: []
+    cashClosures: [],
+    catalogStyles: []
   };
 
   // If it's a new tenant, automatically create a default administrator account
@@ -2197,6 +2275,146 @@ app.get("/api/memberships", (req, res) => {
   res.json(getTenantMemberships(tenant));
 });
 
+// --- 3.6.1. Lookbook & Haircut Catalog Styles API ---
+app.get("/api/catalog-styles", (req, res) => {
+  const tenantId = getTenantId(req);
+  const tenant = tenantData[tenantId] || tenantData["bella-barba"];
+  const styles = getTenantCatalogStyles(tenant);
+  res.json({ success: true, styles });
+});
+
+app.post("/api/catalog-styles", (req, res) => {
+  const tenantId = getTenantId(req);
+  const tenant = tenantData[tenantId] || tenantData["bella-barba"];
+  const { title, category, photoUrl, description, recommendedFace, recommendedHair, serviceId, tags } = req.body;
+
+  if (!title || !category || !photoUrl) {
+    return res.status(400).json({ error: "Título, categoría y foto son obligatorios para el corte del catálogo." });
+  }
+
+  const categoryLabels: Record<string, string> = {
+    fade: "Degradados & Fades",
+    clasico: "Cortes Clásicos",
+    barba: "Barba & Afeitado",
+    tendencias: "Tendencias & Moda",
+    diseno: "Diseños & Freestyle",
+    general: "Estilo General"
+  };
+
+  let linkedServiceName = "";
+  if (serviceId) {
+    const s = tenant.services.find(srv => srv.id === serviceId);
+    if (s) linkedServiceName = s.name;
+  }
+
+  const newStyle: CatalogStyle = {
+    id: "style_" + Date.now().toString(),
+    title: title.trim(),
+    category: category,
+    categoryLabel: categoryLabels[category] || "General",
+    photoUrl: photoUrl.trim(),
+    description: description ? description.trim() : "",
+    recommendedFace: recommendedFace ? recommendedFace.trim() : "",
+    recommendedHair: recommendedHair ? recommendedHair.trim() : "",
+    serviceId: serviceId || undefined,
+    serviceName: linkedServiceName || undefined,
+    isActive: true,
+    tags: Array.isArray(tags) ? tags : (title.split(" ").filter((w: string) => w.length > 2)),
+    createdAt: new Date().toISOString()
+  };
+
+  const currentStyles = getTenantCatalogStyles(tenant);
+  currentStyles.unshift(newStyle);
+  tenant.catalogStyles = currentStyles;
+
+  broadcastChange("catalog_styles_update", currentStyles, tenantId);
+  saveTenantToFirestore(tenantId);
+
+  res.status(201).json({ success: true, style: newStyle, styles: currentStyles });
+});
+
+app.put("/api/catalog-styles/:id", (req, res) => {
+  const tenantId = getTenantId(req);
+  const tenant = tenantData[tenantId] || tenantData["bella-barba"];
+  const { id } = req.params;
+  const { title, category, photoUrl, description, recommendedFace, recommendedHair, serviceId, isActive, tags } = req.body;
+
+  const currentStyles = getTenantCatalogStyles(tenant);
+  const index = currentStyles.findIndex(s => s.id === id);
+  if (index === -1) {
+    return res.status(404).json({ error: "Estilo del catálogo no encontrado." });
+  }
+
+  const categoryLabels: Record<string, string> = {
+    fade: "Degradados & Fades",
+    clasico: "Cortes Clásicos",
+    barba: "Barba & Afeitado",
+    tendencias: "Tendencias & Moda",
+    diseno: "Diseños & Freestyle",
+    general: "Estilo General"
+  };
+
+  const existing = currentStyles[index];
+  const targetCategory = category || existing.category;
+  
+  let linkedServiceName = existing.serviceName;
+  if (serviceId !== undefined) {
+    if (serviceId) {
+      const s = tenant.services.find(srv => srv.id === serviceId);
+      linkedServiceName = s ? s.name : "";
+    } else {
+      linkedServiceName = "";
+    }
+  }
+
+  currentStyles[index] = {
+    ...existing,
+    title: title !== undefined ? title.trim() : existing.title,
+    category: targetCategory,
+    categoryLabel: categoryLabels[targetCategory] || existing.categoryLabel,
+    photoUrl: photoUrl !== undefined ? photoUrl.trim() : existing.photoUrl,
+    description: description !== undefined ? description.trim() : existing.description,
+    recommendedFace: recommendedFace !== undefined ? recommendedFace.trim() : existing.recommendedFace,
+    recommendedHair: recommendedHair !== undefined ? recommendedHair.trim() : existing.recommendedHair,
+    serviceId: serviceId !== undefined ? (serviceId || undefined) : existing.serviceId,
+    serviceName: linkedServiceName || undefined,
+    isActive: isActive !== undefined ? Boolean(isActive) : existing.isActive,
+    tags: tags !== undefined ? (Array.isArray(tags) ? tags : existing.tags) : existing.tags
+  };
+
+  tenant.catalogStyles = currentStyles;
+  broadcastChange("catalog_styles_update", currentStyles, tenantId);
+  saveTenantToFirestore(tenantId);
+
+  res.json({ success: true, style: currentStyles[index], styles: currentStyles });
+});
+
+app.delete("/api/catalog-styles/:id", (req, res) => {
+  const tenantId = getTenantId(req);
+  const tenant = tenantData[tenantId] || tenantData["bella-barba"];
+  const { id } = req.params;
+
+  const currentStyles = getTenantCatalogStyles(tenant);
+  const filtered = currentStyles.filter(s => s.id !== id);
+
+  tenant.catalogStyles = filtered;
+  broadcastChange("catalog_styles_update", filtered, tenantId);
+  saveTenantToFirestore(tenantId);
+
+  res.json({ success: true, message: "Estilo eliminado con éxito", styles: filtered });
+});
+
+app.post("/api/catalog-styles/reset-defaults", (req, res) => {
+  const tenantId = getTenantId(req);
+  const tenant = tenantData[tenantId] || tenantData["bella-barba"];
+
+  tenant.catalogStyles = JSON.parse(JSON.stringify(DEFAULT_CATALOG_STYLES));
+  broadcastChange("catalog_styles_update", tenant.catalogStyles, tenantId);
+  saveTenantToFirestore(tenantId);
+
+  res.json({ success: true, message: "Catálogo restaurado a los estilos profesionales de fábrica", styles: tenant.catalogStyles });
+});
+
 app.get("/api/clients", (req, res) => {
   const tenantId = getTenantId(req);
   const tenant = tenantData[tenantId] || tenantData["bella-barba"];
@@ -2767,7 +2985,7 @@ app.get("/api/barbers", (req, res) => {
 app.post("/api/barbers", (req, res) => {
   const tenantId = getTenantId(req);
   const tenant = tenantData[tenantId] || tenantData["bella-barba"];
-  const { name, username, password, specialties } = req.body;
+  const { name, username, password, specialties, avatarUrl, photoUrl } = req.body;
   if (!name || !username || !password) {
     return res.status(400).json({ error: "Faltan campos obligatorios" });
   }
@@ -2783,7 +3001,9 @@ app.post("/api/barbers", (req, res) => {
     username,
     password,
     isActive: true,
-    specialties: specialties || ["cabello"]
+    specialties: specialties || ["cabello"],
+    avatarUrl: avatarUrl || photoUrl || "",
+    photoUrl: photoUrl || avatarUrl || ""
   };
 
   tenant.barbers.push(newBarber);
@@ -2795,7 +3015,7 @@ app.put("/api/barbers/:id", (req, res) => {
   const tenantId = getTenantId(req);
   const tenant = tenantData[tenantId] || tenantData["bella-barba"];
   const { id } = req.params;
-  const { name, username, password, isActive, specialties, commissionPercent } = req.body;
+  const { name, username, password, isActive, specialties, commissionPercent, avatarUrl, photoUrl } = req.body;
 
   const index = tenant.barbers.findIndex(b => b.id === id);
   if (index === -1) {
@@ -2816,6 +3036,8 @@ app.put("/api/barbers/:id", (req, res) => {
     password: password || tenant.barbers[index].password,
     isActive: isActive !== undefined ? isActive : tenant.barbers[index].isActive,
     specialties: specialties || tenant.barbers[index].specialties,
+    avatarUrl: avatarUrl !== undefined ? avatarUrl : (photoUrl !== undefined ? photoUrl : tenant.barbers[index].avatarUrl),
+    photoUrl: photoUrl !== undefined ? photoUrl : (avatarUrl !== undefined ? avatarUrl : tenant.barbers[index].photoUrl),
     commissionPercent: commissionPercent !== undefined ? Number(commissionPercent) : tenant.barbers[index].commissionPercent,
     blockedDates: req.body.blockedDates !== undefined ? req.body.blockedDates : tenant.barbers[index].blockedDates,
     timeBlocks: req.body.timeBlocks !== undefined ? req.body.timeBlocks : tenant.barbers[index].timeBlocks,
@@ -2945,7 +3167,21 @@ function isSlotOverlapping(tenantId: string, date: string, time: string, duratio
 app.post("/api/appointments", (req, res) => {
   const tenantId = getTenantId(req);
   const tenant = tenantData[tenantId] || tenantData["bella-barba"];
-  const { clientName, clientPhone, clientEmail, serviceId, date, time, notes, barberId } = req.body;
+  const { 
+    clientName, 
+    clientPhone, 
+    clientEmail, 
+    serviceId, 
+    date, 
+    time, 
+    notes, 
+    barberId,
+    selectedStyleId,
+    selectedStyleName,
+    selectedStylePhotoUrl,
+    selectedStyleCategory,
+    selectedStyleNotes
+  } = req.body;
 
   if (!clientName || !clientPhone || !serviceId || !date || !time) {
     return res.status(400).json({ error: "Faltan campos obligatorios para agendar" });
@@ -3087,6 +3323,11 @@ app.post("/api/appointments", (req, res) => {
     createdAt: new Date().toISOString(),
     membershipId: appointmentMembershipId,
     membershipDiscountPercent: appointmentDiscountPercent,
+    selectedStyleId: selectedStyleId || undefined,
+    selectedStyleName: selectedStyleName || undefined,
+    selectedStylePhotoUrl: selectedStylePhotoUrl || undefined,
+    selectedStyleCategory: selectedStyleCategory || undefined,
+    selectedStyleNotes: selectedStyleNotes || undefined
   };
 
   tenant.appointments.push(newAppointment);

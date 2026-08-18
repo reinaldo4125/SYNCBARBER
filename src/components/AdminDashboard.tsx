@@ -1755,6 +1755,56 @@ export default function AdminDashboard({
                         })()
                       )}
 
+                      {/* Foto / Estilo de Referencia Elegido por el Cliente en Catálogo (Lookbook) */}
+                      {(app.selectedStyleName || app.selectedStylePhotoUrl) && (
+                        <div className="bg-neutral-900/90 border border-amber-500/40 p-3 rounded-2xl flex items-center gap-3.5 max-w-xl shadow-md">
+                          {app.selectedStylePhotoUrl ? (
+                            <a 
+                              href={app.selectedStylePhotoUrl} 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              className="group relative shrink-0 block"
+                              title="Click para ver en tamaño completo"
+                            >
+                              <img 
+                                src={app.selectedStylePhotoUrl} 
+                                alt={app.selectedStyleName || "Corte de referencia"} 
+                                className="w-14 h-14 rounded-xl object-cover border border-amber-400/60 shadow-sm group-hover:scale-105 transition-transform" 
+                                referrerPolicy="no-referrer"
+                              />
+                              <span className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 flex items-center justify-center text-[10px] text-white font-bold transition-opacity">
+                                🔍
+                              </span>
+                            </a>
+                          ) : (
+                            <div className="w-14 h-14 rounded-xl bg-amber-950/40 border border-amber-400/30 flex items-center justify-center text-amber-400 shrink-0">
+                              <Scissors className="h-6 w-6" />
+                            </div>
+                          )}
+
+                          <div className="space-y-0.5 min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[9px] font-extrabold uppercase bg-amber-400/20 text-amber-300 px-2 py-0.2 rounded-md border border-amber-400/40">
+                                ✂️ Foto de Referencia Elegida por el Cliente
+                              </span>
+                              {app.selectedStyleCategory && (
+                                <span className="text-[9px] text-neutral-400 uppercase font-mono">
+                                  {app.selectedStyleCategory}
+                                </span>
+                              )}
+                            </div>
+                            <h5 className="text-xs font-black text-white truncate">
+                              {app.selectedStyleName}
+                            </h5>
+                            {app.selectedStyleNotes && (
+                              <p className="text-[11px] text-neutral-400 line-clamp-2">
+                                {app.selectedStyleNotes}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Notas de Cliente / Alerta & Exoneración de Multa */}
                       {(() => {
                         const hasPenaltyNote = app.notes && (app.notes.toLowerCase().includes("multa") || app.notes.toLowerCase().includes("inasistencia"));

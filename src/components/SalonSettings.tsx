@@ -40,6 +40,7 @@ export default function SalonSettings({
 }: SalonSettingsProps) {
   // Config state
   const [salonName, setSalonName] = useState(config.name);
+  const [tagline, setTagline] = useState(config.tagline || "");
   const [openTime, setOpenTime] = useState(config.openTime);
   const [closeTime, setCloseTime] = useState(config.closeTime);
   const [workingDays, setWorkingDays] = useState<number[]>(config.workingDays);
@@ -49,17 +50,20 @@ export default function SalonSettings({
   const [penaltySuccess, setPenaltySuccess] = useState(false);
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [configSuccess, setConfigSuccess] = useState(false);
-  const activeLicense = config.licenseType || "premium";
-
-  // Brand/Theme states
+  const [configError, setConfigError] = useState("");
+  
+  // Brand/Theme states & saving
   const [accentColor, setAccentColor] = useState(config.accentColor || "gold");
   const [textColor, setTextColor] = useState(config.textColor || "#FFFFFF");
   const [backgroundColor, setBackgroundColor] = useState(config.backgroundColor || "#0B0C10");
   const [cardColor, setCardColor] = useState(config.cardColor || "#141414");
   const [subCardColor, setSubCardColor] = useState(config.subCardColor || "#1A1A1A");
   const [borderColor, setBorderColor] = useState(config.borderColor || "#262626");
-  const [tagline, setTagline] = useState(config.tagline || "");
   const [customLogoUrl, setCustomLogoUrl] = useState(config.customLogoUrl || "");
+  const [isSavingBrand, setIsSavingBrand] = useState(false);
+  const [brandSuccess, setBrandSuccess] = useState(false);
+
+  const activeLicense = config.licenseType || "premium";
 
   React.useEffect(() => {
     if (config.accentColor) setAccentColor(config.accentColor);
@@ -209,32 +213,100 @@ export default function SalonSettings({
   // Handle saving general salon configs
   const handleSaveConfig = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSavingConfig(true);
+    setConfigError("");
     setConfigSuccess(false);
+
+    // Validation 1: Name
+    if (!salonName.trim()) {
+      setConfigError("El nombre de la barbería es obligatorio.");
+      return;
+    }
+
+    // Validation 2: Hours / Schedule
+    if (!openTime || !closeTime) {
+      setConfigError("Debes especificar la hora de apertura y la hora de cierre.");
+      return;
+    }
+
+    const [openH, openM] = openTime.split(":").map(Number);
+    const [closeH, closeM] = closeTime.split(":").map(Number);
+
+    if (isNaN(openH) || isNaN(openM) || isNaN(closeH) || isNaN(closeM)) {
+      setConfigError("El formato de las horas de atención es inválido.");
+      return;
+    }
+
+    const openTotalMins = openH * 60 + openM;
+    const closeTotalMins = closeH * 60 + closeM;
+
+    if (openTotalMins >= closeTotalMins) {
+      setConfigError(`La hora de apertura (${openTime}) debe ser anterior a la hora de cierre (${closeTime}).`);
+      return;
+    }
+
+    // Validation 3: Working Days
+    if (!workingDays || workingDays.length === 0) {
+      setConfigError("Debes seleccionar al menos un día laboral para la atención al público.");
+      return;
+    }
+
+    setIsSavingConfig(true);
 
     try {
       await onUpdateConfig({
-        name: salonName,
+        name: salonName.trim(),
+        tagline: tagline.trim(),
         openTime,
         closeTime,
-        workingDays,
+        workingDays: Array.from(new Set<number>(workingDays)).sort((a: number, b: number) => a - b),
         intervalMinutes: Number(intervalMinutes),
+      });
+      setConfigSuccess(true);
+      if (triggerToast) {
+        triggerToast(
+          "Parámetros Guardados",
+          "Los parámetros y horarios de la peluquería han sido actualizados con éxito.",
+          "success"
+        );
+      }
+      setTimeout(() => setConfigSuccess(false), 4000);
+    } catch (err: any) {
+      console.error(err);
+      setConfigError(err.message || "Error al guardar la configuración.");
+    } finally {
+      setIsSavingConfig(false);
+    }
+  };
+
+  // Handle saving brand styles
+  const handleSaveBrand = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingBrand(true);
+    setBrandSuccess(false);
+
+    try {
+      await onUpdateConfig({
         accentColor,
         textColor,
         backgroundColor,
         cardColor,
         subCardColor,
         borderColor,
-        tagline,
-        customLogoUrl,
-        noShowPenaltyAmount: Number(noShowPenaltyAmount),
+        customLogoUrl: customLogoUrl.trim(),
       });
-      setConfigSuccess(true);
-      setTimeout(() => setConfigSuccess(false), 3000);
+      setBrandSuccess(true);
+      if (triggerToast) {
+        triggerToast(
+          "Marca Actualizada",
+          "Los colores y logotipo han sido guardados con éxito.",
+          "success"
+        );
+      }
+      setTimeout(() => setBrandSuccess(false), 4000);
     } catch (err) {
       console.error(err);
     } finally {
-      setIsSavingConfig(false);
+      setIsSavingBrand(false);
     }
   };
 
@@ -316,13 +388,20 @@ export default function SalonSettings({
       
       {/* 1. Configuración del Negocio */}
       <div className="lg:col-span-1 space-y-6">
-        <div className="bg-elegant-card border border-elegant-border rounded-3xl p-5 md:p-6 shadow-xs space-y-6">
-          <div className="border-b border-elegant-border pb-4">
-            <h2 className="text-sm font-bold text-white font-sans flex items-center gap-1.5">
-              <Settings className="h-4.5 w-4.5 text-elegant-gold" />
-              Parámetros de Peluquería
-            </h2>
-            <p className="text-[11px] text-elegant-text-muted">Configura datos generales y tiempos de atención del salón.</p>
+        
+        {/* Card 1: Parámetros de Peluquería */}
+        <div className="bg-elegant-card border border-elegant-border rounded-3xl p-5 md:p-6 shadow-xs space-y-5" id="parametros-peluqueria-card">
+          <div className="border-b border-elegant-border pb-3 flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-bold text-white font-sans flex items-center gap-1.5">
+                <Settings className="h-4.5 w-4.5 text-elegant-gold" />
+                Parámetros de Peluquería
+              </h2>
+              <p className="text-[11px] text-elegant-text-muted">Configura datos generales, eslogan y horarios de atención del salón.</p>
+            </div>
+            <span className="px-2 py-0.5 bg-elegant-gold/10 border border-elegant-gold/30 text-elegant-gold rounded-lg text-[9px] font-mono font-bold uppercase tracking-wider shrink-0">
+              General
+            </span>
           </div>
 
           <form onSubmit={handleSaveConfig} className="space-y-4 text-xs">
@@ -334,8 +413,30 @@ export default function SalonSettings({
                 required
                 value={salonName}
                 onChange={(e) => setSalonName(e.target.value)}
-                className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-sm md:text-xs bg-elegant-sub text-white focus:ring-1 focus:ring-elegant-gold placeholder-neutral-500"
+                placeholder="Ej: Cano Barber"
+                className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-sm md:text-xs bg-elegant-sub text-white focus:ring-1 focus:ring-elegant-gold placeholder-neutral-500 font-medium"
               />
+            </div>
+
+            {/* Eslogan o Lema Comercial (Slogan) */}
+            <div className="space-y-1 bg-elegant-sub/50 p-3 rounded-2xl border border-elegant-border/70">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-bold text-elegant-gold uppercase block flex items-center gap-1">
+                  <Sparkles className="h-3 w-3 text-elegant-gold" />
+                  Eslogan o Lema Comercial (Slogan)
+                </label>
+                <span className="text-[9px] text-elegant-text-muted italic">Visible para clientes</span>
+              </div>
+              <input
+                type="text"
+                value={tagline}
+                onChange={(e) => setTagline(e.target.value)}
+                placeholder="Ej: Arte, Precisión & Estilo Masculino"
+                className="w-full px-3 py-2 border border-elegant-border rounded-xl text-xs bg-elegant-card text-white focus:ring-1 focus:ring-elegant-gold placeholder-neutral-500 font-medium"
+              />
+              <p className="text-[9px] text-elegant-text-muted leading-tight">
+                Se muestra debajo del nombre del salón en el portal web y en la pantalla de bienvenida.
+              </p>
             </div>
 
             {/* Horarios de Atención */}
@@ -379,7 +480,12 @@ export default function SalonSettings({
 
             {/* Días laborables */}
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Días Laborales Abiertos</label>
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Días Laborales Abiertos</label>
+                <span className="text-[9px] font-mono text-elegant-gold font-semibold">
+                  {workingDays.length} {workingDays.length === 1 ? "día activo" : "días activos"}
+                </span>
+              </div>
               <div className="space-y-1.5 bg-elegant-sub p-3 rounded-2xl border border-elegant-border">
                 {[
                   { id: 1, label: "Lunes" },
@@ -392,254 +498,306 @@ export default function SalonSettings({
                 ].map((day) => {
                   const isChecked = workingDays.includes(day.id);
                   return (
-                    <label key={day.id} className="flex items-center space-x-2 text-xs font-semibold text-elegant-text select-none cursor-pointer hover:text-white">
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => handleToggleDay(day.id)}
-                        className="rounded text-elegant-gold focus:ring-elegant-gold border-elegant-border bg-elegant-card w-4 h-4 cursor-pointer"
-                      />
-                      <span>{day.label}</span>
+                    <label 
+                      key={day.id} 
+                      className={`flex items-center justify-between p-1.5 rounded-xl transition-colors cursor-pointer select-none ${
+                        isChecked ? "bg-elegant-card/80 text-white font-bold" : "text-elegant-text-muted hover:text-white"
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2.5">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => handleToggleDay(day.id)}
+                          className="rounded text-elegant-gold focus:ring-elegant-gold border-elegant-border bg-elegant-card w-4 h-4 cursor-pointer"
+                        />
+                        <span className="text-xs">{day.label}</span>
+                      </div>
+                      {isChecked ? (
+                        <span className="text-[9px] text-emerald-400 font-mono font-bold bg-emerald-950/60 px-1.5 py-0.5 rounded-md border border-emerald-800/60">
+                          Abierto
+                        </span>
+                      ) : (
+                        <span className="text-[9px] text-zinc-500 font-mono bg-zinc-900/60 px-1.5 py-0.5 rounded-md">
+                          Cerrado
+                        </span>
+                      )}
                     </label>
                   );
                 })}
               </div>
             </div>
 
-            {/* Configuración de Multa por Inasistencia */}
-            <div className="border-t border-elegant-border/80 pt-4 mt-4 space-y-3 bg-rose-950/20 p-4 rounded-2xl border border-rose-900/50 shadow-sm">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-xs font-extrabold text-rose-300 uppercase tracking-wider flex items-center gap-1.5 font-sans">
-                  <AlertCircle className="h-4 w-4 text-rose-400 animate-pulse" />
-                  🚨 Política de Multas por Inasistencia
-                </h3>
+            {configError && (
+              <div className="text-xs text-rose-300 bg-rose-950/70 border border-rose-800/80 p-3 rounded-xl flex items-start gap-2 animate-fadeIn">
+                <AlertCircle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+                <span>{configError}</span>
               </div>
-              <p className="text-[10px] text-rose-200/80 leading-relaxed">
-                Define el valor del recargo en pesos COP que se asignará a la ficha del cliente cuando se marque <strong>"No Asistió"</strong> en una reserva. Se cobrará o exonerará en su siguiente cita.
-              </p>
-              
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-rose-200 uppercase block">Valor de la Multa ($ COP)</label>
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <div className="relative flex-1">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-rose-400 font-bold text-sm">$</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1000"
-                      value={noShowPenaltyAmount}
-                      onChange={(e) => setNoShowPenaltyAmount(Number(e.target.value))}
-                      className="w-full pl-8 pr-3 py-2.5 bg-rose-950/80 border border-rose-700/80 text-white font-mono font-extrabold text-base rounded-xl focus:ring-2 focus:ring-rose-500 shadow-inner"
-                      placeholder="10000"
-                    />
-                  </div>
+            )}
 
-                  <button
-                    type="button"
-                    disabled={isSavingPenalty}
-                    onClick={async () => {
-                      setIsSavingPenalty(true);
-                      try {
-                        await onUpdateConfig({ noShowPenaltyAmount: Number(noShowPenaltyAmount) });
-                        setPenaltySuccess(true);
-                        if (triggerToast) {
-                          triggerToast(
-                            "Multa Guardada",
-                            `Se actualizó el valor de la multa a $${Number(noShowPenaltyAmount).toLocaleString()} COP`,
-                            "success"
-                          );
-                        }
-                        setTimeout(() => setPenaltySuccess(false), 4000);
-                      } catch (err) {
-                        console.error(err);
-                      } finally {
-                        setIsSavingPenalty(false);
+            {configSuccess && (
+              <div className="p-2.5 bg-emerald-950/60 border border-emerald-700 text-emerald-300 rounded-xl text-xs font-bold text-center animate-fadeIn flex items-center justify-center gap-2">
+                <Check className="h-4 w-4 text-emerald-400" />
+                <span>¡Parámetros guardados y sincronizados correctamente!</span>
+              </div>
+            )}
+
+            {/* BOTÓN DIRECTO Y EFECTIVO DE GUARDAR PARÁMETROS */}
+            <button
+              type="submit"
+              disabled={isSavingConfig}
+              className="w-full py-3 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg font-extrabold rounded-xl text-xs transition-all cursor-pointer shadow-md flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50"
+            >
+              {isSavingConfig ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <span>Guardando Parámetros...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4 text-elegant-bg stroke-[3]" />
+                  <span>Guardar Parámetros de Peluquería</span>
+                </>
+              )}
+            </button>
+          </form>
+        </div>
+
+        {/* Card 2: Política de Multas por Inasistencia */}
+        <div className="bg-rose-950/20 border border-rose-900/60 rounded-3xl p-5 md:p-6 shadow-sm space-y-4">
+          <div className="border-b border-rose-900/40 pb-3 flex items-center justify-between gap-2">
+            <h3 className="text-xs font-extrabold text-rose-300 uppercase tracking-wider flex items-center gap-1.5 font-sans">
+              <AlertCircle className="h-4 w-4 text-rose-400 animate-pulse" />
+              Política de Multas por Inasistencia
+            </h3>
+            <span className="px-2 py-0.5 bg-rose-900/40 border border-rose-700/60 text-rose-300 rounded-lg text-[9px] font-mono font-bold uppercase tracking-wider">
+              Recargos
+            </span>
+          </div>
+
+          <p className="text-[11px] text-rose-200/80 leading-relaxed">
+            Define el valor del recargo en pesos COP que se asignará a la ficha del cliente cuando se marque <strong>"No Asistió"</strong> en una reserva. Se cobrará o exonerará en su siguiente cita.
+          </p>
+          
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-rose-200 uppercase block">Valor de la Multa ($ COP)</label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="relative flex-1">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-rose-400 font-bold text-sm">$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    value={noShowPenaltyAmount}
+                    onChange={(e) => setNoShowPenaltyAmount(Number(e.target.value))}
+                    className="w-full pl-8 pr-3 py-2.5 bg-rose-950/80 border border-rose-700/80 text-white font-mono font-extrabold text-base rounded-xl focus:ring-2 focus:ring-rose-500 shadow-inner"
+                    placeholder="10000"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isSavingPenalty}
+                  onClick={async () => {
+                    setIsSavingPenalty(true);
+                    try {
+                      await onUpdateConfig({ noShowPenaltyAmount: Number(noShowPenaltyAmount) });
+                      setPenaltySuccess(true);
+                      if (triggerToast) {
+                        triggerToast(
+                          "Multa Guardada",
+                          `Se actualizó el valor de la multa a $${Number(noShowPenaltyAmount).toLocaleString()} COP`,
+                          "success"
+                        );
                       }
-                    }}
-                    className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs rounded-xl shadow-md cursor-pointer transition-all flex items-center justify-center gap-2 shrink-0 active:scale-95 disabled:opacity-50"
-                  >
-                    <Check className="h-4 w-4 text-white" />
-                    <span>{isSavingPenalty ? "Guardando..." : "Guardar Multa"}</span>
-                  </button>
-                </div>
-
-                <div className="flex items-center justify-between text-[9px] font-mono text-rose-300/70">
-                  <span>Ejemplo: 10000 (equivale a $10.000 COP)</span>
-                </div>
-
-                {penaltySuccess && (
-                  <div className="p-2.5 bg-emerald-950/60 border border-emerald-700 text-emerald-300 rounded-xl text-xs font-bold text-center animate-fadeIn flex items-center justify-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-400" />
-                    <span>¡Valor de multa actualizado y guardado correctamente!</span>
-                  </div>
-                )}
+                      setTimeout(() => setPenaltySuccess(false), 4000);
+                    } catch (err) {
+                      console.error(err);
+                    } finally {
+                      setIsSavingPenalty(false);
+                    }
+                  }}
+                  className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs rounded-xl shadow-md cursor-pointer transition-all flex items-center justify-center gap-2 shrink-0 active:scale-95 disabled:opacity-50"
+                >
+                  <Check className="h-4 w-4 text-white" />
+                  <span>{isSavingPenalty ? "Guardando..." : "Guardar Multa"}</span>
+                </button>
               </div>
             </div>
 
-            {/* Personalización de Marca */}
-            <div className="border-t border-elegant-border/80 pt-4 mt-4 space-y-3.5">
-              <h3 className="text-[11px] font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-                <Sparkles className="h-3.5 w-3.5 text-elegant-gold" />
-                Personalización de Marca (Branding)
-              </h3>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* Color de Acento */}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Color de Acento del Salón</label>
-                  <select
-                    value={accentColor}
-                    onChange={(e) => setAccentColor(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-sm md:text-xs bg-elegant-sub text-white focus:ring-1 focus:ring-elegant-gold h-10"
-                  >
-                    <option value="gold" className="bg-elegant-card text-white">Dorado Elegante</option>
-                    <option value="cyan" className="bg-elegant-card text-cyan-400">Cian Tecnológico</option>
-                    <option value="emerald" className="bg-elegant-card text-emerald-400">Verde Esmeralda</option>
-                    <option value="blue" className="bg-elegant-card text-blue-400">Azul Zafiro</option>
-                    <option value="violet" className="bg-elegant-card text-violet-400">Morado Real</option>
-                    <option value="rose" className="bg-elegant-card text-rose-400">Rosa Carmesí</option>
-                    <option value="amber" className="bg-elegant-card text-amber-500">Ámbar Cálido</option>
-                  </select>
-                </div>
+            <div className="flex items-center justify-between text-[9px] font-mono text-rose-300/70">
+              <span>Ejemplo: 10000 (equivale a $10.000 COP)</span>
+            </div>
 
-                {/* Eslogan / Tagline */}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Eslogan o Lema comercial</label>
+            {penaltySuccess && (
+              <div className="p-2.5 bg-emerald-950/60 border border-emerald-700 text-emerald-300 rounded-xl text-xs font-bold text-center animate-fadeIn flex items-center justify-center gap-2">
+                <Check className="h-4 w-4 text-emerald-400" />
+                <span>¡Valor de multa actualizado y guardado correctamente!</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Card 3: Personalización de Marca (Branding) */}
+        <div className="bg-elegant-card border border-elegant-border rounded-3xl p-5 md:p-6 shadow-xs space-y-4">
+          <div className="border-b border-elegant-border pb-3 flex items-center justify-between gap-2">
+            <div>
+              <h3 className="text-xs font-extrabold text-white uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="h-4 w-4 text-elegant-gold" />
+                Personalización de Marca & Estilos
+              </h3>
+              <p className="text-[11px] text-elegant-text-muted">Ajusta la paleta de colores y logotipo del salón.</p>
+            </div>
+            <span className="px-2 py-0.5 bg-cyan-950/60 border border-cyan-800/80 text-cyan-300 rounded-lg text-[9px] font-mono font-bold uppercase tracking-wider">
+              Branding
+            </span>
+          </div>
+          
+          <form onSubmit={handleSaveBrand} className="space-y-4 text-xs">
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Color de Acento del Salón</label>
+              <select
+                value={accentColor}
+                onChange={(e) => setAccentColor(e.target.value)}
+                className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-sm md:text-xs bg-elegant-sub text-white focus:ring-1 focus:ring-elegant-gold h-10 font-medium"
+              >
+                <option value="gold" className="bg-elegant-card text-white">Dorado Elegante</option>
+                <option value="cyan" className="bg-elegant-card text-cyan-400">Cian Tecnológico</option>
+                <option value="emerald" className="bg-elegant-card text-emerald-400">Verde Esmeralda</option>
+                <option value="blue" className="bg-elegant-card text-blue-400">Azul Zafiro</option>
+                <option value="violet" className="bg-elegant-card text-violet-400">Morado Real</option>
+                <option value="rose" className="bg-elegant-card text-rose-400">Rosa Carmesí</option>
+                <option value="amber" className="bg-elegant-card text-amber-500">Ámbar Cálido</option>
+              </select>
+            </div>
+
+            {/* URL del Logo Personalizado */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">URL del Logo de la Barbería (o Iniciales)</label>
+              <input
+                type="text"
+                placeholder="Ej: https://midominio.com/logo.png o 'BB'"
+                value={customLogoUrl}
+                onChange={(e) => setCustomLogoUrl(e.target.value)}
+                className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-sm md:text-xs bg-elegant-sub text-white focus:ring-1 focus:ring-elegant-gold"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {/* Color de Texto Accent */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Color Texto Accent</label>
+                <div className="flex gap-1.5 items-center">
+                  <input
+                    type="color"
+                    value={textColor}
+                    onChange={(e) => setTextColor(e.target.value)}
+                    className="w-8 h-8 rounded-lg border border-elegant-border bg-transparent p-0 cursor-pointer overflow-hidden shrink-0"
+                  />
                   <input
                     type="text"
-                    placeholder="Ej: Estilo & Elegancia para tu barba"
-                    value={tagline}
-                    onChange={(e) => setTagline(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-sm md:text-xs bg-elegant-sub text-white focus:ring-1 focus:ring-elegant-gold"
+                    value={textColor}
+                    onChange={(e) => setTextColor(e.target.value)}
+                    className="w-full px-2 py-2 bg-elegant-sub border border-elegant-border text-white text-[10px] rounded-lg font-mono uppercase focus:ring-1 focus:ring-elegant-gold"
                   />
                 </div>
               </div>
 
-              {/* URL del Logo Personalizado */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">URL del Logo de la Barbería (o Iniciales)</label>
-                <input
-                  type="text"
-                  placeholder="Ej: https://midominio.com/logo.png o 'BB'"
-                  value={customLogoUrl}
-                  onChange={(e) => setCustomLogoUrl(e.target.value)}
-                  className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-sm md:text-xs bg-elegant-sub text-white focus:ring-1 focus:ring-elegant-gold"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                {/* Color de Texto Accent */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Color de Texto Accent</label>
-                  <div className="flex gap-1.5 items-center">
-                    <input
-                      type="color"
-                      value={textColor}
-                      onChange={(e) => setTextColor(e.target.value)}
-                      className="w-8 h-8 rounded-lg border border-elegant-border bg-transparent p-0 cursor-pointer overflow-hidden shrink-0"
-                    />
-                    <input
-                      type="text"
-                      value={textColor}
-                      onChange={(e) => setTextColor(e.target.value)}
-                      className="w-full px-2 py-2 bg-elegant-sub border border-elegant-border text-white text-[10px] rounded-lg font-mono uppercase focus:ring-1 focus:ring-elegant-gold"
-                    />
-                  </div>
-                </div>
-
-                {/* Color de Fondo del Salón */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Color de Fondo del Salón</label>
-                  <div className="flex gap-1.5 items-center">
-                    <input
-                      type="color"
-                      value={backgroundColor}
-                      onChange={(e) => setBackgroundColor(e.target.value)}
-                      className="w-8 h-8 rounded-lg border border-elegant-border bg-transparent p-0 cursor-pointer overflow-hidden shrink-0"
-                    />
-                    <input
-                      type="text"
-                      value={backgroundColor}
-                      onChange={(e) => setBackgroundColor(e.target.value)}
-                      className="w-full px-2 py-2 bg-elegant-sub border border-elegant-border text-white text-[10px] rounded-lg font-mono uppercase focus:ring-1 focus:ring-elegant-gold"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Nuevos controles para colores de Secciones y Bordes */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {/* Color de Tarjetas / Secciones */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Color de Secciones (Tarjetas)</label>
-                  <div className="flex gap-1.5 items-center">
-                    <input
-                      type="color"
-                      value={cardColor}
-                      onChange={(e) => setCardColor(e.target.value)}
-                      className="w-8 h-8 rounded-lg border border-elegant-border bg-transparent p-0 cursor-pointer overflow-hidden shrink-0"
-                    />
-                    <input
-                      type="text"
-                      value={cardColor}
-                      onChange={(e) => setCardColor(e.target.value)}
-                      className="w-full px-2 py-2 bg-elegant-sub border border-elegant-border text-white text-[10px] rounded-lg font-mono uppercase focus:ring-1 focus:ring-elegant-gold"
-                    />
-                  </div>
-                </div>
-
-                {/* Color de Sub-secciones */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Color de Sub-secciones</label>
-                  <div className="flex gap-1.5 items-center">
-                    <input
-                      type="color"
-                      value={subCardColor}
-                      onChange={(e) => setSubCardColor(e.target.value)}
-                      className="w-8 h-8 rounded-lg border border-elegant-border bg-transparent p-0 cursor-pointer overflow-hidden shrink-0"
-                    />
-                    <input
-                      type="text"
-                      value={subCardColor}
-                      onChange={(e) => setSubCardColor(e.target.value)}
-                      className="w-full px-2 py-2 bg-elegant-sub border border-elegant-border text-white text-[10px] rounded-lg font-mono uppercase focus:ring-1 focus:ring-elegant-gold"
-                    />
-                  </div>
-                </div>
-
-                {/* Color de Bordes */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Color de Bordes</label>
-                  <div className="flex gap-1.5 items-center">
-                    <input
-                      type="color"
-                      value={borderColor}
-                      onChange={(e) => setBorderColor(e.target.value)}
-                      className="w-8 h-8 rounded-lg border border-elegant-border bg-transparent p-0 cursor-pointer overflow-hidden shrink-0"
-                    />
-                    <input
-                      type="text"
-                      value={borderColor}
-                      onChange={(e) => setBorderColor(e.target.value)}
-                      className="w-full px-2 py-2 bg-elegant-sub border border-elegant-border text-white text-[10px] rounded-lg font-mono uppercase focus:ring-1 focus:ring-elegant-gold"
-                    />
-                  </div>
+              {/* Color de Fondo del Salón */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Color Fondo</label>
+                <div className="flex gap-1.5 items-center">
+                  <input
+                    type="color"
+                    value={backgroundColor}
+                    onChange={(e) => setBackgroundColor(e.target.value)}
+                    className="w-8 h-8 rounded-lg border border-elegant-border bg-transparent p-0 cursor-pointer overflow-hidden shrink-0"
+                  />
+                  <input
+                    type="text"
+                    value={backgroundColor}
+                    onChange={(e) => setBackgroundColor(e.target.value)}
+                    className="w-full px-2 py-2 bg-elegant-sub border border-elegant-border text-white text-[10px] rounded-lg font-mono uppercase focus:ring-1 focus:ring-elegant-gold"
+                  />
                 </div>
               </div>
             </div>
 
-            {configSuccess && (
-              <p className="text-xs text-emerald-300 bg-emerald-950/40 border border-emerald-800/50 p-2 rounded-xl text-center">
-                ¡Configuración guardada y compartida con éxito!
-              </p>
+            {/* Nuevos controles para colores de Secciones y Bordes */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Color de Tarjetas / Secciones */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Secciones</label>
+                <div className="flex gap-1.5 items-center">
+                  <input
+                    type="color"
+                    value={cardColor}
+                    onChange={(e) => setCardColor(e.target.value)}
+                    className="w-8 h-8 rounded-lg border border-elegant-border bg-transparent p-0 cursor-pointer overflow-hidden shrink-0"
+                  />
+                  <input
+                    type="text"
+                    value={cardColor}
+                    onChange={(e) => setCardColor(e.target.value)}
+                    className="w-full px-2 py-2 bg-elegant-sub border border-elegant-border text-white text-[10px] rounded-lg font-mono uppercase focus:ring-1 focus:ring-elegant-gold"
+                  />
+                </div>
+              </div>
+
+              {/* Color de Sub-secciones */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Sub-secciones</label>
+                <div className="flex gap-1.5 items-center">
+                  <input
+                    type="color"
+                    value={subCardColor}
+                    onChange={(e) => setSubCardColor(e.target.value)}
+                    className="w-8 h-8 rounded-lg border border-elegant-border bg-transparent p-0 cursor-pointer overflow-hidden shrink-0"
+                  />
+                  <input
+                    type="text"
+                    value={subCardColor}
+                    onChange={(e) => setSubCardColor(e.target.value)}
+                    className="w-full px-2 py-2 bg-elegant-sub border border-elegant-border text-white text-[10px] rounded-lg font-mono uppercase focus:ring-1 focus:ring-elegant-gold"
+                  />
+                </div>
+              </div>
+
+              {/* Color de Bordes */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Bordes</label>
+                <div className="flex gap-1.5 items-center">
+                  <input
+                    type="color"
+                    value={borderColor}
+                    onChange={(e) => setBorderColor(e.target.value)}
+                    className="w-8 h-8 rounded-lg border border-elegant-border bg-transparent p-0 cursor-pointer overflow-hidden shrink-0"
+                  />
+                  <input
+                    type="text"
+                    value={borderColor}
+                    onChange={(e) => setBorderColor(e.target.value)}
+                    className="w-full px-2 py-2 bg-elegant-sub border border-elegant-border text-white text-[10px] rounded-lg font-mono uppercase focus:ring-1 focus:ring-elegant-gold"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {brandSuccess && (
+              <div className="p-2.5 bg-emerald-950/60 border border-emerald-700 text-emerald-300 rounded-xl text-xs font-bold text-center animate-fadeIn flex items-center justify-center gap-2">
+                <Check className="h-4 w-4 text-emerald-400" />
+                <span>¡Estilos de marca guardados correctamente!</span>
+              </div>
             )}
 
             <button
               type="submit"
-              disabled={isSavingConfig}
-              className="w-full py-2.5 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg font-extrabold rounded-xl text-xs transition-colors cursor-pointer"
+              disabled={isSavingBrand}
+              className="w-full py-2.5 bg-elegant-gold/20 hover:bg-elegant-gold/30 border border-elegant-gold/50 text-elegant-gold font-extrabold rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-2 active:scale-98"
             >
-              {isSavingConfig ? "Guardando..." : "Guardar Configuración"}
+              <Check className="h-4 w-4" />
+              <span>{isSavingBrand ? "Guardando Estilos..." : "Guardar Personalización de Marca"}</span>
             </button>
           </form>
         </div>
@@ -688,26 +846,52 @@ export default function SalonSettings({
               </div>
             </div>
 
-            <div className="bg-[#162237]/60 rounded-xl p-3 border border-[#1F314D] space-y-1.5">
+            <div className="bg-[#162237]/60 rounded-xl p-3 border border-[#1F314D] space-y-2">
               <span className="text-[10px] text-gray-300 font-bold uppercase tracking-wider block">
-                Módulos Incluidos en tu Plan:
+                Módulos y Capacidades de tu Plan:
               </span>
-              <ul className="grid sm:grid-cols-2 gap-1.5 text-[10px] text-gray-200">
+              <ul className="grid sm:grid-cols-2 gap-2 text-[10px] text-gray-200">
                 <li className="flex items-center gap-1.5 text-emerald-400 font-medium">
                   <Check className="h-3 w-3 shrink-0" />
-                  <span>Agenda & Reservas Online</span>
+                  <span>Agenda & Reservas Online QR</span>
                 </li>
                 <li className="flex items-center gap-1.5 text-emerald-400 font-medium">
                   <Check className="h-3 w-3 shrink-0" />
-                  <span>Administrador de Barberos</span>
+                  <span>Modo Silla PWA con Foto de Referencia</span>
                 </li>
                 <li className="flex items-center gap-1.5 text-emerald-400 font-medium">
                   <Check className="h-3 w-3 shrink-0" />
-                  <span>Inventario POS & Cierre de Caja</span>
+                  <span>
+                    {activeLicense === "basica"
+                      ? "Catálogo de Cortes (Lectura Cliente)"
+                      : "Catálogo Lookbook Personalizado (Editor Full)"}
+                  </span>
+                </li>
+                <li className={`flex items-center gap-1.5 font-medium ${activeLicense === "basica" ? "text-neutral-500 line-through" : "text-emerald-400"}`}>
+                  <Check className="h-3 w-3 shrink-0" />
+                  <span>Inventario & Nevera POS</span>
+                </li>
+                <li className={`flex items-center gap-1.5 font-medium ${activeLicense === "basica" ? "text-neutral-500 line-through" : "text-emerald-400"}`}>
+                  <Check className="h-3 w-3 shrink-0" />
+                  <span>Membresías VIP & Fichas de Clientes</span>
+                </li>
+                <li className={`flex items-center gap-1.5 font-medium ${activeLicense === "premium" ? "text-emerald-400" : "text-neutral-500 line-through"}`}>
+                  <Check className="h-3 w-3 shrink-0" />
+                  <span>Liquidación de Comisiones & Propinas</span>
+                </li>
+                <li className={`flex items-center gap-1.5 font-medium ${activeLicense === "premium" ? "text-emerald-400" : "text-neutral-500 line-through"}`}>
+                  <Check className="h-3 w-3 shrink-0" />
+                  <span>Cierre de Caja Ciego & Auditoría</span>
                 </li>
                 <li className="flex items-center gap-1.5 text-emerald-400 font-medium">
                   <Check className="h-3 w-3 shrink-0" />
-                  <span>Membresías VIP & Puntos</span>
+                  <span>
+                    {activeLicense === "premium"
+                      ? "Barberos Ilimitados"
+                      : activeLicense === "profesional"
+                      ? "Hasta 5 Barberos"
+                      : "Hasta 2 Barberos"}
+                  </span>
                 </li>
               </ul>
             </div>

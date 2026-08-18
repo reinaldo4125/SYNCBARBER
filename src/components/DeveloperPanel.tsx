@@ -1924,6 +1924,10 @@ export default function DeveloperPanel({
                       admin-{salonNameInput ? salonNameInput.toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 15) : 'salon'}
                     </span>
                   </div>
+                  <div className="text-[9px] text-emerald-400 pt-0.5 flex items-center gap-1">
+                    <span>✨</span>
+                    <span>Modo en Blanco: Todo listo para ser llenado a medida con el cliente.</span>
+                  </div>
                 </div>
 
                 <button
@@ -5300,6 +5304,9 @@ export default function DeveloperPanel({
                         <div className="h-[1.5px] w-full bg-neutral-100 my-1.5" />
                         <p className="text-[6.5px] font-mono tracking-widest text-neutral-400 font-extrabold uppercase qr-subtext">
                           APUNTA TU CÁMARA PARA RESERVAR
+                        </p>
+                        <p className="text-[5.5px] font-sans font-bold text-amber-600 uppercase tracking-tight mt-0.5">
+                          📲 Guarda el Acceso Directo en tu Celular
                         </p>
                       </div>
                     </div>

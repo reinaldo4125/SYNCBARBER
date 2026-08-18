@@ -39,6 +39,8 @@ import InventoryManager from "./components/InventoryManager";
 import ModoSillaPWA from "./components/ModoSillaPWA";
 import ModoKiosco from "./components/ModoKiosco";
 import CierreCajaModal from "./components/CierreCajaModal";
+import CatalogManager from "./components/CatalogManager";
+import { Camera } from "lucide-react";
 
 interface RealTimeToast {
   id: string;
@@ -95,7 +97,7 @@ export default function App() {
   });
   const [isDevUnlocked, setIsDevUnlocked] = useState(false);
   const [devError, setDevError] = useState("");
-  const [adminTab, setAdminTab] = useState<"agenda" | "calendar" | "commissions" | "settings" | "barbers" | "clients">("agenda");
+  const [adminTab, setAdminTab] = useState<"agenda" | "calendar" | "commissions" | "settings" | "barbers" | "clients" | "inventory" | "catalog">("agenda");
   const [loggedUser, setLoggedUser] = useState<{ id: string; name: string; username: string; role: 'admin' | 'barber'; barberId?: string; salonId?: string } | null>(null);
   const [isModoSillaActive, setIsModoSillaActive] = useState<boolean>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -531,8 +533,17 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newConfig),
       });
-      if (!res.ok) throw new Error("Error al guardar ajustes.");
-      return await res.json();
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || errData.message || "Error al guardar ajustes.");
+      }
+      const data = await res.json();
+      if (data.config) {
+        setConfig(data.config);
+      } else {
+        setConfig((prev) => ({ ...prev, ...newConfig }));
+      }
+      return data;
     } catch (e) {
       console.error(e);
       throw e;
@@ -844,7 +855,7 @@ export default function App() {
                     {config.name || "Barberia Demo"}
                   </span>
                   {config.tagline ? (
-                    <p className="text-[7px] sm:text-[9px] text-elegant-gold font-bold uppercase mt-0.5 leading-none max-w-[120px] xs:max-w-[150px] truncate">
+                    <p className="text-[7px] sm:text-[9px] text-elegant-gold font-bold uppercase mt-0.5 leading-none max-w-[140px] xs:max-w-[200px] sm:max-w-xs truncate" title={config.tagline}>
                       {config.tagline}
                     </p>
                   ) : (
@@ -1052,7 +1063,7 @@ export default function App() {
           if (adminTab === "agenda" || adminTab === "calendar") activeCategory = "citas";
           else if (adminTab === "inventory" || adminTab === "commissions") activeCategory = "pos";
           else if (adminTab === "barbers" || adminTab === "clients") activeCategory = "equipo";
-          else if (adminTab === "settings") activeCategory = "ajustes";
+          else if (adminTab === "settings" || adminTab === "catalog") activeCategory = "ajustes";
 
           return (
             <div className="bg-elegant-card text-elegant-text border-b border-elegant-border shadow-xs">
@@ -1243,18 +1254,33 @@ export default function App() {
                   )}
 
                   {activeCategory === "ajustes" && (
-                    <button
-                      type="button"
-                      onClick={() => setAdminTab("settings")}
-                      className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold ${
-                        adminTab === "settings"
-                          ? "bg-elegant-gold text-black shadow-xs font-extrabold"
-                          : "bg-elegant-sub/80 text-elegant-text-muted hover:text-white"
-                      }`}
-                    >
-                      <Settings className="h-3.5 w-3.5" />
-                      <span>Configuración del Salón</span>
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setAdminTab("catalog")}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold ${
+                          adminTab === "catalog"
+                            ? "bg-amber-400 text-black shadow-xs font-extrabold"
+                            : "bg-elegant-sub/80 text-elegant-text-muted hover:text-white"
+                        }`}
+                      >
+                        <Camera className="h-3.5 w-3.5 text-amber-500" />
+                        <span>Catálogo de Cortes & Lookbook</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setAdminTab("settings")}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold ${
+                          adminTab === "settings"
+                            ? "bg-elegant-gold text-black shadow-xs font-extrabold"
+                            : "bg-elegant-sub/80 text-elegant-text-muted hover:text-white"
+                        }`}
+                      >
+                        <Settings className="h-3.5 w-3.5" />
+                        <span>Configuración del Salón</span>
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -1542,6 +1568,12 @@ export default function App() {
                     formatPrice={formatPrice}
                   />
                 )
+              ) : adminTab === "catalog" ? (
+                <CatalogManager
+                  services={services}
+                  config={config}
+                  formatPrice={formatPrice}
+                />
               ) : (
                 <SalonSettings
                   services={services}

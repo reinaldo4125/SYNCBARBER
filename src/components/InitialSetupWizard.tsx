@@ -38,6 +38,7 @@ export default function InitialSetupWizard({
 
   // Step 1: Config states
   const [salonName, setSalonName] = useState(initialConfig.name);
+  const [tagline, setTagline] = useState(initialConfig.tagline || "");
   const [openTime, setOpenTime] = useState(initialConfig.openTime || "09:00");
   const [closeTime, setCloseTime] = useState(initialConfig.closeTime || "19:00");
   const [intervalMinutes, setIntervalMinutes] = useState(initialConfig.intervalMinutes || 30);
@@ -134,6 +135,29 @@ export default function InitialSetupWizard({
     }
   };
 
+  const handleNextStep1 = () => {
+    setError("");
+    if (!salonName.trim()) {
+      setError("Por favor ingresa el nombre de tu barbería o peluquería.");
+      return;
+    }
+    if (!openTime || !closeTime) {
+      setError("Por favor indica la hora de apertura y de cierre.");
+      return;
+    }
+    const [openH, openM] = openTime.split(":").map(Number);
+    const [closeH, closeM] = closeTime.split(":").map(Number);
+    if (openH * 60 + openM >= closeH * 60 + closeM) {
+      setError(`La hora de apertura (${openTime}) debe ser anterior a la hora de cierre (${closeTime}).`);
+      return;
+    }
+    if (!workingDays || workingDays.length === 0) {
+      setError("Debes seleccionar al menos un día laboral.");
+      return;
+    }
+    setStep(2);
+  };
+
   const handleFinish = async () => {
     if (services.length === 0) {
       setError("Por favor, agrega al menos un servicio para tus clientes.");
@@ -151,10 +175,11 @@ export default function InitialSetupWizard({
     try {
       await onComplete({
         config: {
-          name: salonName,
+          name: salonName.trim(),
+          tagline: tagline.trim(),
           openTime,
           closeTime,
-          workingDays,
+          workingDays: Array.from(new Set<number>(workingDays)).sort((a: number, b: number) => a - b),
           intervalMinutes: Number(intervalMinutes),
           needsSetup: false
         },
@@ -250,6 +275,18 @@ export default function InitialSetupWizard({
                     />
                   </div>
 
+                  {/* Eslogan / Lema */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Eslogan o Lema del Salón</label>
+                    <input
+                      type="text"
+                      value={tagline}
+                      onChange={(e) => setTagline(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-sm md:text-xs bg-elegant-sub text-white focus:ring-1 focus:ring-elegant-gold"
+                      placeholder="Ej: Arte, Precisión & Estilo Masculino"
+                    />
+                  </div>
+
                   {/* Intervalo de citas */}
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Frecuencia / Intervalo de Turnos</label>
@@ -277,7 +314,7 @@ export default function InitialSetupWizard({
                     />
                   </div>
 
-                  <div className="space-y-1">
+                  <div className="space-y-1 md:col-span-2">
                     <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Hora de Cierre</label>
                     <input
                       type="time"
@@ -610,7 +647,14 @@ export default function InitialSetupWizard({
 
           {step < 3 ? (
             <button
-              onClick={() => { setError(""); setStep(step + 1); }}
+              onClick={() => {
+                if (step === 1) {
+                  handleNextStep1();
+                } else {
+                  setError("");
+                  setStep(step + 1);
+                }
+              }}
               className="px-4 py-2 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-all"
             >
               <span>Continuar</span>

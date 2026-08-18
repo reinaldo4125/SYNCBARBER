@@ -6,10 +6,20 @@
     <meta name="theme-color" content="#0F0F12" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="SYNCBARBER Silla" />
+    <meta name="apple-mobile-web-app-title" content="Barbería App" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
     <link rel="manifest" href="/manifest.json" />
-    <title>SYNCBARBER - Modo Silla PWA</title>
+    <title>SYNCBARBER - Agendamiento de Citas & Barbería</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(err => {
+            console.log('ServiceWorker registration ignored:', err);
+          });
+        });
+      }
+    </script>
   </head>
   <body class="bg-[#0F0F12] text-white">
     <div id="root"></div>
