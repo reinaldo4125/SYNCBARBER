@@ -1384,8 +1384,8 @@ export default function App() {
                           className="w-full text-xs p-3 border border-elegant-border rounded-xl bg-elegant-sub text-white placeholder-neutral-600 focus:outline-none focus:border-amber-500 tracking-widest"
                           onKeyDown={(e) => {
                             if (e.key === "Enter") {
-                              const val = (document.getElementById("dev-pwd-input") as HTMLInputElement)?.value;
-                              if (val === "syncdev2026" || val === "12345") {
+                              const val = ((document.getElementById("dev-pwd-input") as HTMLInputElement)?.value || "").trim();
+                              if (val === "Salome2016.") {
                                 setIsDevUnlocked(true);
                                 setDevError("");
                               } else {
@@ -1402,8 +1402,8 @@ export default function App() {
                       <div className="flex gap-2 pt-2">
                         <button
                           onClick={() => {
-                            const val = (document.getElementById("dev-pwd-input") as HTMLInputElement)?.value;
-                            if (val === "syncdev2026" || val === "12345") {
+                            const val = ((document.getElementById("dev-pwd-input") as HTMLInputElement)?.value || "").trim();
+                            if (val === "Salome2016.") {
                               setIsDevUnlocked(true);
                               setDevError("");
                             } else {

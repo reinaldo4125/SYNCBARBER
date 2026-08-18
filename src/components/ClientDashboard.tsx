@@ -1048,14 +1048,14 @@ export default function ClientDashboard({
                 </div>
 
                 {/* Paso 1: Selección de Servicio */}
-                <div className="space-y-3">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-elegant-text-muted flex items-center gap-1.5">
-                    <span className="bg-elegant-gold text-elegant-bg w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-mono font-extrabold">1</span>
+                <div className="space-y-3.5">
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-elegant-gold flex items-center gap-2">
+                    <span className="bg-elegant-gold text-elegant-bg w-5 h-5 rounded-full flex items-center justify-center text-xs font-mono font-black">1</span>
                     Selecciona un Servicio
                   </h3>
 
                   {/* Filtro de Categorías */}
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex flex-wrap gap-2">
                     {[
                       { id: "all", label: "Todos" },
                       ...(config.serviceCategories || [
@@ -1068,9 +1068,9 @@ export default function ClientDashboard({
                       <button
                         key={cat.id}
                         onClick={() => setActiveCategory(cat.id)}
-                        className={`px-3 py-1 rounded-full text-xs transition-colors cursor-pointer ${
+                        className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${
                           activeCategory === cat.id
-                            ? "bg-elegant-gold text-elegant-bg font-bold"
+                            ? "bg-elegant-gold text-elegant-bg font-bold shadow-sm"
                             : "bg-elegant-sub border border-elegant-border text-elegant-text hover:bg-elegant-border"
                         }`}
                       >
@@ -1082,14 +1082,14 @@ export default function ClientDashboard({
                   {/* Servicios en Grid */}
                   {filteredServices.length === 0 ? (
                     <div className="p-8 text-center bg-elegant-sub/50 border border-dashed border-elegant-border rounded-2xl space-y-2">
-                      <Scissors className="h-8 w-8 mx-auto text-elegant-gold/60 animate-pulse" />
-                      <p className="text-xs font-bold text-white">No hay servicios registrados en esta categoría aún.</p>
-                      <p className="text-[11px] text-elegant-text-muted">
+                      <Scissors className="h-9 w-9 mx-auto text-elegant-gold/60 animate-pulse" />
+                      <p className="text-sm font-bold text-white">No hay servicios registrados en esta categoría aún.</p>
+                      <p className="text-xs text-elegant-text-muted">
                         El administrador de la barbería está configurando el menú de atención.
                       </p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                       {filteredServices.map((service) => {
                         const isSelected = selectedService?.id === service.id;
                         return (
@@ -1100,32 +1100,32 @@ export default function ClientDashboard({
                               setSelectedService(service);
                               setSelectedTime(""); // reset time when service changes
                             }}
-                            className={`border rounded-2xl p-4 cursor-pointer transition-all flex flex-col justify-between space-y-3 ${
+                            className={`border rounded-2xl p-4.5 cursor-pointer transition-all flex flex-col justify-between space-y-3.5 ${
                               isSelected
-                                ? "border-elegant-gold bg-elegant-gold/10 ring-1 ring-elegant-gold"
-                                : "border-elegant-border bg-elegant-sub hover:border-neutral-700 hover:bg-elegant-card"
+                                ? "border-elegant-gold bg-elegant-gold/10 ring-2 ring-elegant-gold shadow-md shadow-amber-500/5"
+                                : "border-elegant-border bg-elegant-sub hover:border-neutral-600 hover:bg-elegant-card"
                             }`}
                           >
-                            <div className="space-y-1">
+                            <div className="space-y-1.5">
                               <div className="flex justify-between items-start gap-2">
-                                <h4 className="font-bold text-xs text-white">{service.name}</h4>
-                                <span className="text-xs font-bold font-mono text-elegant-gold whitespace-nowrap shrink-0">
+                                <h4 className="font-bold text-sm text-white">{service.name}</h4>
+                                <span className="text-sm font-bold font-mono text-elegant-gold whitespace-nowrap shrink-0">
                                   {formatPrice(service.price)}
                                 </span>
                               </div>
-                              <p className="text-[10px] text-elegant-text-muted line-clamp-2 leading-relaxed">
+                              <p className="text-xs text-elegant-text-muted line-clamp-2 leading-relaxed">
                                 {service.description}
                               </p>
                             </div>
                             
-                            <div className="flex items-center justify-between pt-1 border-t border-elegant-border text-[10px] text-elegant-text-muted font-mono">
-                              <span className="flex items-center gap-1">
-                                <Clock className="h-3 w-3 text-elegant-text-muted" />
+                            <div className="flex items-center justify-between pt-2 border-t border-elegant-border/80 text-xs text-elegant-text-muted font-mono">
+                              <span className="flex items-center gap-1.5 text-neutral-300">
+                                <Clock className="h-3.5 w-3.5 text-elegant-gold" />
                                 {service.duration} minutos
                               </span>
                               {isSelected && (
-                                <span className="text-elegant-gold font-sans font-bold flex items-center gap-0.5">
-                                  Seleccionado <CheckCircle className="h-3 w-3 fill-elegant-gold text-elegant-bg" />
+                                <span className="text-elegant-gold font-sans font-bold flex items-center gap-1">
+                                  Seleccionado <CheckCircle className="h-4 w-4 fill-elegant-gold text-elegant-bg" />
                                 </span>
                               )}
                             </div>
@@ -1138,13 +1138,13 @@ export default function ClientDashboard({
 
                 {/* Paso 2: Selección de Barbero */}
                 {selectedService && (
-                  <div className="space-y-3 pt-4 border-t border-elegant-border animate-fadeIn">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-elegant-text-muted flex items-center gap-1.5">
-                      <span className="bg-elegant-gold text-elegant-bg w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-mono font-extrabold">2</span>
+                  <div className="space-y-3.5 pt-5 border-t border-elegant-border animate-fadeIn">
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-elegant-gold flex items-center gap-2">
+                      <span className="bg-elegant-gold text-elegant-bg w-5 h-5 rounded-full flex items-center justify-center text-xs font-mono font-black">2</span>
                       Elige tu Barbero / Peluquero
                     </h3>
                     
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3.5">
                       {/* Cualquier Barbero option */}
                       <div
                         onClick={() => {
@@ -1153,18 +1153,18 @@ export default function ClientDashboard({
                         }}
                         className={`border rounded-2xl p-4 cursor-pointer transition-all flex items-center gap-3 ${
                           selectedBarberId === "any"
-                            ? "border-elegant-gold bg-elegant-gold/10 ring-1 ring-elegant-gold shadow-md shadow-elegant-gold/5"
-                            : "border-elegant-border bg-elegant-sub hover:border-neutral-700 hover:bg-elegant-card"
+                            ? "border-elegant-gold bg-elegant-gold/10 ring-2 ring-elegant-gold shadow-md shadow-elegant-gold/10"
+                            : "border-elegant-border bg-elegant-sub hover:border-neutral-600 hover:bg-elegant-card"
                         }`}
                       >
-                        <div className="h-11 w-11 rounded-xl bg-elegant-border/80 text-elegant-gold flex items-center justify-center font-bold text-lg border border-elegant-gold/30 shrink-0">
+                        <div className="h-12 w-12 rounded-xl bg-elegant-border/80 text-elegant-gold flex items-center justify-center font-bold text-xl border border-elegant-gold/30 shrink-0">
                           ✨
                         </div>
                         <div>
-                          <h4 className="font-bold text-xs text-white leading-tight">Cualquier Barbero</h4>
-                          <p className="text-[10px] text-elegant-text-muted mt-0.5">Asignación automática</p>
-                          <span className="text-[9px] text-emerald-400 font-semibold flex items-center gap-1 mt-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                          <h4 className="font-bold text-sm text-white leading-tight">Cualquier Barbero</h4>
+                          <p className="text-xs text-elegant-text-muted mt-0.5">Asignación automática</p>
+                          <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1.5 mt-1">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
                             Mayor disponibilidad
                           </span>
                         </div>
@@ -1189,12 +1189,12 @@ export default function ClientDashboard({
                               isBlockedToday
                                 ? "border-rose-950/40 bg-rose-950/5 opacity-50 cursor-not-allowed"
                                 : isSelected
-                                  ? "border-elegant-gold bg-elegant-gold/10 ring-1 ring-elegant-gold shadow-lg shadow-elegant-gold/10"
-                                  : "border-elegant-border bg-elegant-sub hover:border-neutral-700 hover:bg-elegant-card"
+                                  ? "border-elegant-gold bg-elegant-gold/10 ring-2 ring-elegant-gold shadow-lg shadow-elegant-gold/10"
+                                  : "border-elegant-border bg-elegant-sub hover:border-neutral-600 hover:bg-elegant-card"
                             }`}
                           >
                             <div className="relative shrink-0">
-                              <div className={`h-11 w-11 rounded-xl border overflow-hidden flex items-center justify-center font-bold text-xs ${
+                              <div className={`h-12 w-12 rounded-xl border overflow-hidden flex items-center justify-center font-bold text-sm ${
                                 isBlockedToday 
                                   ? "bg-rose-950/40 border-rose-800 text-rose-400" 
                                   : isSelected 
@@ -1212,25 +1212,25 @@ export default function ClientDashboard({
                                     }}
                                   />
                                 ) : (
-                                  <span className="font-mono text-xs font-black text-white">
+                                  <span className="font-mono text-sm font-black text-white">
                                     {barber.name.split(" ").map(w => w[0]).join("").substring(0, 2).toUpperCase()}
                                   </span>
                                 )}
                               </div>
                               {!isBlockedToday && (
-                                <span className="absolute -bottom-0.5 -right-0.5 bg-emerald-500 h-2.5 w-2.5 rounded-full border-2 border-elegant-bg" title="Disponible" />
+                                <span className="absolute -bottom-0.5 -right-0.5 bg-emerald-500 h-3 w-3 rounded-full border-2 border-elegant-bg" title="Disponible" />
                               )}
                             </div>
 
                             <div className="flex-1 min-w-0">
-                              <h4 className={`font-bold text-xs truncate leading-tight ${isBlockedToday ? "text-rose-400" : "text-white"}`}>
+                              <h4 className={`font-bold text-sm truncate leading-tight ${isBlockedToday ? "text-rose-400" : "text-white"}`}>
                                 {barber.name}
                               </h4>
                               {isBlockedToday ? (
-                                <p className="text-[9px] text-rose-400 font-bold mt-0.5">🔴 Ausente / Descanso</p>
+                                <p className="text-[11px] text-rose-400 font-bold mt-0.5">🔴 Ausente / Descanso</p>
                               ) : (
                                 <>
-                                  <p className="text-[10px] text-elegant-text-muted mt-0.5 truncate">
+                                  <p className="text-xs text-elegant-text-muted mt-0.5 truncate">
                                     {barber.specialties && barber.specialties.length > 0 
                                       ? barber.specialties.slice(0, 2).map(s => {
                                           const cat = (config?.serviceCategories || []).find(c => c.id === s);
@@ -1238,9 +1238,9 @@ export default function ClientDashboard({
                                         }).join(" • ")
                                       : "Especialista"}
                                   </p>
-                                  <div className="flex items-center gap-1 mt-1 text-[10px] text-elegant-gold font-semibold">
+                                  <div className="flex items-center gap-1 mt-1 text-xs text-elegant-gold font-bold">
                                     <span>★ {ratingInfo.avg}</span>
-                                    <span className="text-elegant-text-muted text-[9px] font-normal">
+                                    <span className="text-elegant-text-muted text-[11px] font-normal">
                                       ({ratingInfo.count})
                                     </span>
                                   </div>
@@ -1257,15 +1257,15 @@ export default function ClientDashboard({
                 {/* Paso 3: Selección de Fecha y Hora */}
                 {selectedService && (
                   <div className="space-y-4 pt-4 border-t border-elegant-border animate-fadeIn">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-elegant-text-muted flex items-center gap-1.5">
-                      <span className="bg-elegant-gold text-elegant-bg w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-mono font-extrabold">3</span>
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-elegant-gold flex items-center gap-2">
+                      <span className="bg-elegant-gold text-elegant-bg w-5 h-5 rounded-full flex items-center justify-center text-xs font-mono font-black">3</span>
                       Elige Fecha y Horario Disponible
                     </h3>
 
                     {/* Fecha de Agendamiento */}
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-elegant-text-muted block uppercase">Día Seleccionado:</label>
-                      <div className="grid grid-cols-3 xs:grid-cols-4 sm:grid-cols-5 md:grid-cols-7 gap-1.5">
+                      <label className="text-xs font-bold text-neutral-300 block uppercase tracking-wider">Día Seleccionado:</label>
+                      <div className="grid grid-cols-3 xs:grid-cols-4 sm:grid-cols-5 md:grid-cols-7 gap-2">
                         {availableDates.map((dateStr) => {
                           const isSelected = selectedDate === dateStr;
                           const label = formatDateLabel(dateStr);
@@ -1277,19 +1277,19 @@ export default function ClientDashboard({
                                 setSelectedDate(dateStr);
                                 setSelectedTime(""); // reset time
                               }}
-                              className={`p-1.5 xs:p-2 sm:p-2.5 rounded-xl border flex flex-col items-center justify-center transition-all cursor-pointer ${
+                              className={`p-2 xs:p-2.5 sm:p-3 rounded-2xl border flex flex-col items-center justify-center transition-all cursor-pointer ${
                                 isSelected
-                                  ? "border-elegant-gold bg-elegant-gold text-elegant-bg font-bold"
-                                  : "border-elegant-border bg-elegant-sub text-elegant-text hover:bg-elegant-card"
+                                  ? "border-elegant-gold bg-elegant-gold text-elegant-bg font-bold shadow-md shadow-amber-500/10"
+                                  : "border-elegant-border bg-elegant-sub text-elegant-text hover:bg-elegant-card hover:border-neutral-600"
                               }`}
                             >
-                              <span className={`text-[8px] xs:text-[9px] font-semibold uppercase ${isSelected ? "text-elegant-bg/85 font-extrabold" : "text-elegant-text-muted"}`}>
+                              <span className={`text-xs font-bold uppercase ${isSelected ? "text-elegant-bg font-extrabold" : "text-neutral-400"}`}>
                                 {label.dayName.slice(0, 3)}
                               </span>
-                              <span className="text-sm xs:text-base font-bold font-sans mt-0.5">
+                              <span className="text-base xs:text-lg font-bold font-sans mt-0.5">
                                 {label.dayNum}
                               </span>
-                              <span className={`text-[7px] xs:text-[8px] font-mono ${isSelected ? "text-elegant-bg/80" : "text-elegant-text-muted"}`}>
+                              <span className={`text-[11px] font-mono ${isSelected ? "text-elegant-bg/90 font-bold" : "text-neutral-400"}`}>
                                 {label.monthName}
                               </span>
                             </button>
@@ -1299,13 +1299,15 @@ export default function ClientDashboard({
                     </div>
 
                     {/* Hora de Agendamiento */}
-                    <div className="space-y-2">
+                    <div className="space-y-2 pt-2">
                       <div className="flex justify-between items-center">
-                        <label className="text-[10px] font-bold text-elegant-text-muted uppercase">Horas Disponibles ({formatDateLabel(selectedDate).full}):</label>
-                        <span className="text-[9px] text-elegant-text-muted font-medium hidden xs:inline">Los horarios ocupados se deshabilitan automáticamente</span>
+                        <label className="text-xs font-bold text-neutral-300 uppercase tracking-wider">
+                          Horas Disponibles ({formatDateLabel(selectedDate).full}):
+                        </label>
+                        <span className="text-xs text-elegant-text-muted font-medium hidden xs:inline">Los horarios ocupados se deshabilitan automáticamente</span>
                       </div>
                       
-                      <div className="grid grid-cols-3 xs:grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-1.5 sm:gap-2">
+                      <div className="grid grid-cols-3 xs:grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2 sm:gap-2.5">
                         {timeSlots.map((timeStr) => {
                           const isBusy = isSlotBusy(selectedDate, timeStr);
                           const isSelected = selectedTime === timeStr;
@@ -1316,12 +1318,12 @@ export default function ClientDashboard({
                               type="button"
                               disabled={isBusy}
                               onClick={() => setSelectedTime(timeStr)}
-                              className={`py-2 px-1 text-center font-mono font-bold text-[11px] xs:text-xs rounded-lg transition-all ${
+                              className={`py-2.5 px-2 text-center font-mono font-bold text-xs xs:text-sm rounded-xl transition-all ${
                                 isBusy 
                                   ? "bg-elegant-sub/30 border border-elegant-border/30 text-neutral-600 cursor-not-allowed line-through" 
                                   : isSelected
-                                    ? "bg-elegant-gold text-elegant-bg font-extrabold ring-2 ring-elegant-gold"
-                                    : "bg-elegant-gold/10 border border-elegant-gold/20 hover:bg-elegant-gold/20 hover:border-elegant-gold text-elegant-gold cursor-pointer"
+                                    ? "bg-elegant-gold text-elegant-bg font-black ring-2 ring-elegant-gold shadow-md shadow-amber-500/10"
+                                    : "bg-elegant-gold/10 border border-elegant-gold/30 hover:bg-elegant-gold/25 hover:border-elegant-gold text-elegant-gold cursor-pointer"
                               }`}
                             >
                               {timeStr}
@@ -1336,9 +1338,9 @@ export default function ClientDashboard({
 
                 {/* Paso 4: Formulario de Contacto */}
                 {selectedService && selectedDate && selectedTime && (
-                  <form onSubmit={handleBookingSubmit} className="space-y-4 pt-4 border-t border-elegant-border animate-fadeIn text-xs">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-elegant-text-muted flex items-center gap-1.5">
-                      <span className="bg-elegant-gold text-elegant-bg w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-mono font-extrabold">4</span>
+                  <form onSubmit={handleBookingSubmit} className="space-y-4 pt-5 border-t border-elegant-border animate-fadeIn text-sm">
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-elegant-gold flex items-center gap-2">
+                      <span className="bg-elegant-gold text-elegant-bg w-5 h-5 rounded-full flex items-center justify-center text-xs font-mono font-black">4</span>
                       Tus Datos para Confirmación
                     </h3>
 
@@ -1346,26 +1348,26 @@ export default function ClientDashboard({
                       <div className="bg-emerald-950/20 border border-emerald-800/40 p-4 rounded-2xl space-y-2">
                         <div className="flex items-start justify-between">
                           <div className="space-y-1">
-                            <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1">
-                              <UserCheck className="h-3 w-3" />
+                            <p className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                              <UserCheck className="h-4 w-4" />
                               Sesión de Cliente Iniciada
                             </p>
-                            <h4 className="text-sm font-bold text-white">{loggedClient.name}</h4>
-                            <p className="text-[11px] text-elegant-text-muted font-mono">{loggedClient.phone} | {loggedClient.email}</p>
+                            <h4 className="text-base font-bold text-white">{loggedClient.name}</h4>
+                            <p className="text-xs text-neutral-300 font-mono">{loggedClient.phone} | {loggedClient.email}</p>
                           </div>
                           {loggedClient.membershipActive && (
-                            <span className="bg-emerald-900/40 text-emerald-400 border border-emerald-800 text-[10px] font-extrabold px-2.5 py-1 rounded-xl uppercase">
+                            <span className="bg-emerald-900/40 text-emerald-400 border border-emerald-800 text-xs font-extrabold px-3 py-1 rounded-xl uppercase">
                               Socio Activo
                             </span>
                           )}
                         </div>
-                        <p className="text-[11px] text-elegant-text-muted italic">
+                        <p className="text-xs text-neutral-300 italic">
                           Tus datos de contacto se han cargado automáticamente. Tu descuento de membresía se aplicará en el resumen final.
                         </p>
                       </div>
                     ) : (
                       <>
-                        <div className="bg-elegant-sub/60 p-3.5 rounded-2xl border border-elegant-border text-[11px] text-elegant-text-muted flex items-center justify-between">
+                        <div className="bg-elegant-sub/60 p-3.5 rounded-2xl border border-elegant-border text-xs text-neutral-300 flex items-center justify-between">
                           <span>
                             💡 ¿Tienes membresía de descuentos?
                           </span>
@@ -1381,64 +1383,64 @@ export default function ClientDashboard({
                           </button>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-elegant-text-muted block uppercase">Nombre Completo *</label>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-neutral-300 block uppercase tracking-wider">Nombre Completo *</label>
                             <input
                               type="text"
                               required
                               value={clientName}
                               onChange={(e) => setClientName(e.target.value)}
                               placeholder="Ej: Sofía Martínez"
-                              className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-sm md:text-xs focus:ring-1 focus:ring-elegant-gold bg-elegant-sub text-white placeholder-neutral-500"
+                              className="w-full px-3.5 py-3 border border-elegant-border rounded-xl text-sm focus:ring-2 focus:ring-elegant-gold bg-elegant-sub text-white placeholder-neutral-500"
                             />
                           </div>
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-elegant-text-muted block uppercase">Número de Celular *</label>
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-neutral-300 block uppercase tracking-wider">Número de Celular *</label>
                             <input
                               type="text"
                               required
                               value={clientPhone}
                               onChange={(e) => setClientPhone(e.target.value)}
                               placeholder="Ej: +57 301 234 5678"
-                              className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-sm md:text-xs focus:ring-1 focus:ring-elegant-gold bg-elegant-sub text-white placeholder-neutral-500"
+                              className="w-full px-3.5 py-3 border border-elegant-border rounded-xl text-sm focus:ring-2 focus:ring-elegant-gold bg-elegant-sub text-white placeholder-neutral-500"
                             />
                           </div>
                         </div>
 
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-elegant-text-muted block uppercase">Correo Electrónico (Opcional)</label>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-bold text-neutral-300 block uppercase tracking-wider">Correo Electrónico (Opcional)</label>
                           <input
                             type="email"
                             value={clientEmail}
                             onChange={(e) => setClientEmail(e.target.value)}
                             placeholder="Ej: sofia@example.com"
-                            className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-sm md:text-xs focus:ring-1 focus:ring-elegant-gold bg-elegant-sub text-white placeholder-neutral-500"
+                            className="w-full px-3.5 py-3 border border-elegant-border rounded-xl text-sm focus:ring-2 focus:ring-elegant-gold bg-elegant-sub text-white placeholder-neutral-500"
                           />
                         </div>
                       </>
                     )}
 
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-elegant-text-muted block uppercase">Notas para el Peluquero (Opcional)</label>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-neutral-300 block uppercase tracking-wider">Notas para el Peluquero (Opcional)</label>
                       <textarea
                         value={clientNotes}
                         onChange={(e) => setClientNotes(e.target.value)}
                         placeholder="Escribe si tienes alguna preferencia para tu corte, el servicio o tienes dudas..."
                         rows={2.5}
-                        className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-sm md:text-xs focus:ring-1 focus:ring-elegant-gold bg-elegant-sub text-white placeholder-neutral-500"
+                        className="w-full px-3.5 py-3 border border-elegant-border rounded-xl text-sm focus:ring-2 focus:ring-elegant-gold bg-elegant-sub text-white placeholder-neutral-500"
                       />
                     </div>
 
                     {/* Recompensa de fidelidad (Propuesta B) */}
                     {loggedClient && (loggedClient.loyaltyPoints || 0) >= 5 && (
-                      <div className="bg-elegant-gold/5 border border-elegant-gold/20 p-4 rounded-2xl text-xs flex items-center justify-between gap-3 animate-fadeIn">
-                        <div className="space-y-0.5">
-                          <p className="font-bold text-elegant-gold flex items-center gap-1.5 uppercase tracking-wider text-[10px]">
+                      <div className="bg-elegant-gold/5 border border-elegant-gold/30 p-4 rounded-2xl text-sm flex items-center justify-between gap-3 animate-fadeIn">
+                        <div className="space-y-1">
+                          <p className="font-bold text-elegant-gold flex items-center gap-2 uppercase tracking-wider text-xs">
                             <Gift className="h-4 w-4" />
                             ¡Recompensa Lista!
                           </p>
-                          <p className="text-[10px] text-elegant-text-muted">
+                          <p className="text-xs text-neutral-300">
                             Tienes <strong>{loggedClient.loyaltyPoints} puntos</strong>. Puedes canjear 5 de ellos para que esta cita sea <strong>totalmente gratis</strong>.
                           </p>
                         </div>
@@ -1471,12 +1473,12 @@ export default function ClientDashboard({
                       if (clientPen <= 0) return null;
 
                       return (
-                        <div className="bg-rose-950/80 border-2 border-rose-500/80 p-3.5 rounded-2xl text-xs text-rose-100 space-y-1 animate-pulse shadow-lg">
-                          <div className="flex items-center gap-2 font-black text-rose-200 uppercase tracking-wider text-[11px]">
-                            <AlertCircle className="h-4.5 w-4.5 text-rose-300 shrink-0" />
+                        <div className="bg-rose-950/80 border-2 border-rose-500/80 p-4 rounded-2xl text-sm text-rose-100 space-y-1.5 animate-pulse shadow-lg">
+                          <div className="flex items-center gap-2 font-black text-rose-200 uppercase tracking-wider text-xs">
+                            <AlertCircle className="h-5 w-5 text-rose-300 shrink-0" />
                             <span>Recargo por Inasistencia Previa Incluido</span>
                           </div>
-                          <p className="text-[11px] text-rose-200/90 leading-normal">
+                          <p className="text-xs text-rose-200 leading-normal">
                             Se adicionó automáticamente un cobro de recaudo de <strong>{formatPrice(clientPen)}</strong> por inasistencia o cancelación previa sin aviso previo.
                           </p>
                         </div>
@@ -1484,21 +1486,21 @@ export default function ClientDashboard({
                     })()}
 
                     {/* Resumen Final */}
-                    <div className="bg-elegant-gold/10 border border-elegant-gold/20 p-4 rounded-2xl text-xs space-y-2.5">
-                      <p className="font-bold text-elegant-gold flex items-center gap-1.5">
-                        <UserCheck className="h-4 w-4 text-elegant-gold" />
+                    <div className="bg-elegant-gold/10 border border-elegant-gold/30 p-4.5 rounded-2xl text-sm space-y-3">
+                      <p className="font-bold text-elegant-gold flex items-center gap-2 text-sm uppercase tracking-wider">
+                        <UserCheck className="h-4.5 w-4.5 text-elegant-gold" />
                         Resumen de Reserva:
                       </p>
-                      <p className="text-elegant-text">
-                        Servicio: <strong>{selectedService.name}</strong> ({selectedService.duration} min)
+                      <p className="text-neutral-200">
+                        Servicio: <strong className="text-white">{selectedService.name}</strong> ({selectedService.duration} min)
                       </p>
                       
-                      <div className="flex items-center gap-2.5 text-elegant-text">
+                      <div className="flex items-center gap-2.5 text-neutral-200 flex-wrap">
                         <span>Peluquero/Barbero:</span>
                         {(() => {
                           if (selectedBarberId === "any") {
                             return (
-                              <span className="font-bold text-white flex items-center gap-1.5 bg-elegant-sub/80 px-2 py-0.5 rounded-lg border border-elegant-border">
+                              <span className="font-bold text-white flex items-center gap-1.5 bg-elegant-sub/80 px-2.5 py-1 rounded-xl border border-elegant-border">
                                 <span>✨</span>
                                 <span>Cualquier Barbero (Automático)</span>
                               </span>
@@ -1507,8 +1509,8 @@ export default function ClientDashboard({
                           const b = barbers.find(b => b.id === selectedBarberId);
                           const photo = b?.photoUrl || b?.avatarUrl || (b as any)?.avatar;
                           return (
-                            <span className="font-bold text-white flex items-center gap-2 bg-elegant-sub/80 px-2.5 py-1 rounded-xl border border-elegant-gold/30">
-                              <div className="h-6 w-6 rounded-full overflow-hidden bg-elegant-card border border-elegant-gold/40 flex items-center justify-center text-[10px] text-white shrink-0">
+                            <span className="font-bold text-white flex items-center gap-2 bg-elegant-sub/80 px-3 py-1 rounded-xl border border-elegant-gold/30">
+                              <div className="h-6 w-6 rounded-full overflow-hidden bg-elegant-card border border-elegant-gold/40 flex items-center justify-center text-xs text-white shrink-0">
                                 {photo ? (
                                   <img 
                                     src={photo} 
@@ -1527,8 +1529,8 @@ export default function ClientDashboard({
                         })()}
                       </div>
 
-                      <p className="text-elegant-text">
-                        Fecha y Hora: <strong>{formatDateLabel(selectedDate).full}</strong> a las <strong>{selectedTime}</strong>
+                      <p className="text-neutral-200">
+                        Fecha y Hora: <strong className="text-white">{formatDateLabel(selectedDate).full}</strong> a las <strong className="text-elegant-gold font-mono">{selectedTime}</strong>
                       </p>
                       {(() => {
                         const clientPen = (() => {
@@ -1552,28 +1554,28 @@ export default function ClientDashboard({
                         return (
                           <>
                             {clientPen > 0 && (
-                              <p className="text-rose-300 font-bold flex justify-between items-center text-xs pt-1 border-t border-rose-900/40">
+                              <p className="text-rose-300 font-bold flex justify-between items-center text-xs pt-1.5 border-t border-rose-900/40">
                                 <span>+ Multa / Recargo Inasistencia Previa:</span>
                                 <span className="font-mono text-rose-200">{formatPrice(clientPen)}</span>
                               </p>
                             )}
-                            <p className="text-elegant-text flex items-center flex-wrap gap-1 pt-1 border-t border-elegant-gold/20">
-                              Total a Pagar:{" "}
+                            <div className="text-neutral-200 flex items-center justify-between flex-wrap gap-2 pt-2 border-t border-elegant-gold/25">
+                              <span className="text-sm font-semibold">Total a Pagar:</span>
                               {redeemReward ? (
-                                <>
-                                  <span className="line-through text-elegant-text-muted mr-1 font-mono">
+                                <div className="text-right">
+                                  <span className="line-through text-elegant-text-muted mr-2 font-mono text-xs">
                                     {formatPrice(selectedService.price)}
                                   </span>
-                                  <strong className="text-emerald-400 font-mono text-sm uppercase">
+                                  <strong className="text-emerald-400 font-mono text-base uppercase font-black">
                                     {clientPen > 0 ? `${formatPrice(totalPrice)} (Servicio Gratis + Multa)` : "¡Gratis! (Canjeando Recompensa)"}
                                   </strong>
-                                </>
+                                </div>
                               ) : (
-                                <strong className="text-elegant-gold font-mono text-sm">
+                                <strong className="text-elegant-gold font-mono text-lg font-black">
                                   {formatPrice(totalPrice)}
                                 </strong>
                               )}
-                            </p>
+                            </div>
                           </>
                         );
                       })()}
@@ -1582,10 +1584,10 @@ export default function ClientDashboard({
                     <button
                       type="submit"
                       disabled={isSubmitting}
-                      className="w-full py-3 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg font-bold rounded-2xl text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+                      className="w-full py-3.5 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg font-extrabold rounded-2xl text-sm transition-all cursor-pointer flex items-center justify-center gap-2 shadow-md hover:shadow-amber-500/20 active:scale-[0.99]"
                     >
                       {isSubmitting ? "Solicitando Turno..." : "Confirmar Mi Cita de Peluquería"}
-                      <ArrowRight className="h-4 w-4" />
+                      <ArrowRight className="h-4.5 w-4.5" />
                     </button>
                   </form>
                 )}

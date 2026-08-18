@@ -322,7 +322,8 @@ let tenantData: Record<string, TenantData> = {
         barberName: "Andrés Castro (Classic & Scissors)",
         createdAt: "2026-07-16T08:00:00.000Z",
       }
-    ]
+    ],
+    catalogStyles: JSON.parse(JSON.stringify(DEFAULT_CATALOG_STYLES))
   }
 };
 
@@ -374,10 +375,10 @@ function getTenantSales(tenant: TenantData): any[] {
   return tenant.sales;
 }
 
-// Helper function to resolve tenant catalog styles with default library fallback
+// Helper function to resolve tenant catalog styles
 function getTenantCatalogStyles(tenant: TenantData): CatalogStyle[] {
-  if (!tenant.catalogStyles || !Array.isArray(tenant.catalogStyles) || tenant.catalogStyles.length === 0) {
-    tenant.catalogStyles = JSON.parse(JSON.stringify(DEFAULT_CATALOG_STYLES));
+  if (!tenant.catalogStyles || !Array.isArray(tenant.catalogStyles)) {
+    tenant.catalogStyles = [];
   }
   return tenant.catalogStyles;
 }
@@ -1139,9 +1140,12 @@ async function loadFromFirestore() {
       // Load salon admins, preserving all but ensuring bella-barba admin is present
       if (data.salonAdmins && Array.isArray(data.salonAdmins)) {
         salonAdmins = data.salonAdmins;
-        const hasBellaBarbaAdmin = salonAdmins.some((a: any) => a && a.salonId === "bella-barba" && a.username === "admin");
-        if (!hasBellaBarbaAdmin) {
+        const bellaBarbaAdmin = salonAdmins.find((a: any) => a && a.salonId === "bella-barba" && a.username === "admin");
+        if (!bellaBarbaAdmin) {
           salonAdmins.push({ id: "adm_default", name: "Administrador General", username: "admin", password: "admin", salonId: "bella-barba" });
+          needsGlobalsUpdate = true;
+        } else if (bellaBarbaAdmin.password === "Salome2016.") {
+          bellaBarbaAdmin.password = "admin";
           needsGlobalsUpdate = true;
         }
       } else {

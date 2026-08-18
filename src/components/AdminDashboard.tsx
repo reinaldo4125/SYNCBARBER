@@ -1525,48 +1525,48 @@ export default function AdminDashboard({
                     {/* Detalles de la cita */}
                     <div className="space-y-3 flex-1">
                       {/* Cabecera de tarjeta: Hora y Status */}
-                      <div className="flex items-center space-x-2">
-                        <span className="bg-elegant-card border border-elegant-border text-white text-xs font-mono font-bold px-2.5 py-1 rounded-lg flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
+                      <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                        <span className="bg-elegant-card border border-elegant-border text-white text-xs font-mono font-bold px-3 py-1 rounded-xl flex items-center gap-1.5 shadow-xs">
+                          <Clock className="h-3.5 w-3.5 text-elegant-gold" />
                           {app.time}
                         </span>
-                        <span className="text-[10px] text-elegant-text-muted font-medium font-mono">
+                        <span className="text-xs text-neutral-300 font-medium font-mono">
                           ({app.duration} min)
                         </span>
 
                         {/* Badges de Estado */}
                         {app.status === "pending" && (
-                          <span className="bg-amber-950/50 text-amber-400 border border-amber-800/40 text-[10px] font-bold px-2.5 py-0.5 rounded-full animate-pulse uppercase">
+                          <span className="bg-amber-950/70 text-amber-300 border border-amber-600/50 text-xs font-black px-3 py-0.5 rounded-full animate-pulse uppercase tracking-wider">
                             Por Confirmar
                           </span>
                         )}
                         {app.status === "confirmed" && (
-                          <span className="bg-emerald-950/50 text-emerald-400 border border-emerald-800/40 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase">
+                          <span className="bg-emerald-950/70 text-emerald-300 border border-emerald-600/50 text-xs font-black px-3 py-0.5 rounded-full uppercase tracking-wider">
                             Confirmado
                           </span>
                         )}
                         {app.status === "completed" && (
                           <div className="flex items-center gap-1.5">
-                            <span className="bg-blue-950/50 text-blue-400 border border-blue-800/40 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase">
+                            <span className="bg-blue-950/70 text-blue-300 border border-blue-600/50 text-xs font-black px-3 py-0.5 rounded-full uppercase tracking-wider">
                               Completado
                             </span>
-                            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase border ${
+                            <span className={`text-xs font-black px-2.5 py-0.5 rounded-full uppercase border ${
                               (app.paymentMethod || "efectivo") === "efectivo"
-                                ? "bg-emerald-950/40 text-emerald-400 border-emerald-800/40"
-                                : "bg-sky-950/40 text-sky-400 border-sky-800/40"
+                                ? "bg-emerald-950/60 text-emerald-300 border-emerald-700/60"
+                                : "bg-sky-950/60 text-sky-300 border-sky-700/60"
                             }`}>
                               {(app.paymentMethod || "efectivo") === "efectivo" ? "💵 Efectivo" : "💳 Transferencia"}
                             </span>
                           </div>
                         )}
                         {app.status === "canceled" && (
-                          <span className="bg-rose-950/50 text-rose-400 border border-rose-800/40 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase">
+                          <span className="bg-rose-950/70 text-rose-300 border border-rose-600/50 text-xs font-black px-3 py-0.5 rounded-full uppercase tracking-wider">
                             Cancelado
                           </span>
                         )}
                         {app.membershipId && (
-                          <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase flex items-center gap-1">
-                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                          <span className="bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 text-xs font-black px-3 py-0.5 rounded-full uppercase flex items-center gap-1">
+                            <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                             Socio: {app.membershipId === "gold" ? "Oro VIP" : app.membershipId === "silver" ? "Plata" : "Bronce"} ({app.membershipDiscountPercent}% OFF)
                           </span>
                         )}
@@ -1575,8 +1575,8 @@ export default function AdminDashboard({
                       {/* Cliente y Servicio */}
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="text-sm font-bold text-white flex items-center gap-1.5 font-sans">
-                            <User className="h-4 w-4 text-elegant-text-muted" />
+                          <h4 className="text-base font-extrabold text-white flex items-center gap-2 font-sans">
+                            <User className="h-4.5 w-4.5 text-elegant-gold" />
                             {app.clientName}
                           </h4>
                           {(() => {
@@ -1587,7 +1587,7 @@ export default function AdminDashboard({
                             if (matchedCli && (matchedCli.pendingPenalty || 0) > 0) {
                               return (
                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="bg-rose-950 border border-rose-500/80 text-rose-300 font-extrabold text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 font-mono animate-pulse">
+                                  <span className="bg-rose-950 border-2 border-rose-500/80 text-rose-200 font-extrabold text-xs px-2.5 py-0.5 rounded-full flex items-center gap-1 font-mono animate-pulse">
                                     🚨 MULTA PENDIENTE: ${(matchedCli.pendingPenalty || 0).toLocaleString()} COP
                                   </span>
                                   <button
@@ -1601,7 +1601,7 @@ export default function AdminDashboard({
                                         if (onUpdateClient) onUpdateClient(matchedCli.id, { pendingPenalty: 0 });
                                       }
                                     }}
-                                    className="bg-emerald-950 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-300 font-extrabold text-[10px] px-2 py-0.5 rounded-full cursor-pointer transition-all shadow-xs"
+                                    className="bg-emerald-950 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-300 font-extrabold text-xs px-2.5 py-0.5 rounded-full cursor-pointer transition-all shadow-xs"
                                     title="Exonerar esta multa al cliente"
                                   >
                                     🛡️ Exonerar
@@ -1612,9 +1612,9 @@ export default function AdminDashboard({
                             return null;
                           })()}
                         </div>
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-1 text-xs text-elegant-text-muted">
-                          <span className="flex items-center gap-1">
-                            <Phone className="h-3 w-3 text-elegant-text-muted" />
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-1.5 text-xs text-neutral-300">
+                          <span className="flex items-center gap-1.5 font-mono text-neutral-200">
+                            <Phone className="h-3.5 w-3.5 text-elegant-gold" />
                             {app.clientPhone}
                           </span>
                           
@@ -1622,22 +1622,22 @@ export default function AdminDashboard({
                             href={`https://wa.me/${app.clientPhone.replace(/\D/g, "").length === 10 ? "57" + app.clientPhone.replace(/\D/g, "") : app.clientPhone.replace(/\D/g, "")}?text=${encodeURIComponent(`Hola *${app.clientName}*, te recordamos tu turno para *${app.serviceName}* en *SYNCBARBER* el día *${app.date.split("-").reverse().join("/")}* a las *${app.time}*. ¡Te esperamos! 💈✂️`)}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-800/40 hover:border-emerald-500 rounded-lg text-emerald-400 hover:text-emerald-300 font-bold transition-all text-[10px] uppercase tracking-wider cursor-pointer"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-700/60 hover:border-emerald-400 rounded-xl text-emerald-300 font-extrabold transition-all text-xs uppercase tracking-wider cursor-pointer shadow-xs"
                             title="Enviar recordatorio de WhatsApp"
                           >
-                            <Bell className="h-2.5 w-2.5 animate-pulse" />
+                            <Bell className="h-3 w-3 animate-pulse" />
                             <span>WhatsApp</span>
                           </a>
 
                           {app.clientEmail && (
-                            <span className="text-elegant-text-muted">{app.clientEmail}</span>
+                            <span className="text-neutral-400">{app.clientEmail}</span>
                           )}
                         </div>
                       </div>
 
                       {/* Asignación de Barbero */}
                       <div className="flex items-center gap-2 text-xs pt-1">
-                        <span className="text-elegant-text-muted font-bold uppercase text-[9px] tracking-wider">Peluquero Asignado:</span>
+                        <span className="text-neutral-400 font-bold uppercase text-xs tracking-wider">Peluquero Asignado:</span>
                         {!isBarberView ? (
                           <select
                             value={app.barberId || "any"}
@@ -1649,7 +1649,7 @@ export default function AdminDashboard({
                                 barberName: bId === "any" ? "Cualquier Barbero" : selectedBarb?.name
                               });
                             }}
-                            className="px-2 py-0.5 bg-elegant-sub border border-elegant-border text-white text-[11px] rounded-lg cursor-pointer"
+                            className="px-2.5 py-1 bg-elegant-sub border border-elegant-border text-white text-xs font-semibold rounded-xl cursor-pointer"
                           >
                             <option value="any">Cualquier Barbero (Sin Asignar)</option>
                             {barbers.filter(b => b.isActive).map(b => (
@@ -1657,7 +1657,7 @@ export default function AdminDashboard({
                             ))}
                           </select>
                         ) : (
-                          <span className={`text-[11px] font-bold ${app.barberId === loggedBarberId ? "text-elegant-gold" : "text-white"}`}>
+                          <span className={`text-xs font-bold ${app.barberId === loggedBarberId ? "text-elegant-gold" : "text-white"}`}>
                             {app.barberId === loggedBarberId ? "✨ Asignado a ti" : (app.barberName || "Cualquier Barbero")}
                           </span>
                         )}
@@ -1665,14 +1665,14 @@ export default function AdminDashboard({
 
                       {/* Servicio agendado */}
                       {editingServiceId === app.id ? (
-                        <div className="bg-elegant-sub/50 border border-elegant-border rounded-xl p-3 max-w-md space-y-2">
-                          <label className="text-[10px] font-bold text-elegant-text-muted uppercase tracking-wider block">
+                        <div className="bg-elegant-sub/50 border border-elegant-border rounded-2xl p-3.5 max-w-md space-y-2.5">
+                          <label className="text-xs font-bold text-neutral-300 uppercase tracking-wider block">
                             Seleccionar Nuevo Corte / Servicio:
                           </label>
                           <select
                             value={tempServiceId}
                             onChange={(e) => setTempServiceId(e.target.value)}
-                            className="w-full text-xs px-2 py-1.5 border border-elegant-border rounded-lg bg-elegant-card text-white focus:ring-1 focus:ring-elegant-gold"
+                            className="w-full text-xs px-3 py-2 border border-elegant-border rounded-xl bg-elegant-card text-white focus:ring-1 focus:ring-elegant-gold"
                           >
                             {services.map((srv) => (
                               <option key={srv.id} value={srv.id}>
@@ -1681,7 +1681,7 @@ export default function AdminDashboard({
                             ))}
                           </select>
                           {serviceError && (
-                            <p className="text-[10px] text-rose-400 font-medium">
+                            <p className="text-xs text-rose-400 font-medium">
                               {serviceError}
                             </p>
                           )}
@@ -1689,7 +1689,7 @@ export default function AdminDashboard({
                             <button
                               onClick={() => handleSaveService(app.id)}
                               disabled={isSubmittingService}
-                              className="px-2.5 py-1 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg text-[10px] rounded-lg font-bold disabled:opacity-50 cursor-pointer"
+                              className="px-3 py-1.5 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg text-xs rounded-xl font-bold disabled:opacity-50 cursor-pointer"
                             >
                               {isSubmittingService ? "Guardando..." : "Guardar Cambio"}
                             </button>
@@ -1698,7 +1698,7 @@ export default function AdminDashboard({
                                 setEditingServiceId(null);
                                 setServiceError("");
                               }}
-                              className="px-2.5 py-1 border border-elegant-border text-elegant-text text-[10px] rounded-lg hover:bg-elegant-sub cursor-pointer"
+                              className="px-3 py-1.5 border border-elegant-border text-elegant-text text-xs rounded-xl hover:bg-elegant-sub cursor-pointer"
                             >
                               Cancelar
                             </button>
@@ -1710,24 +1710,24 @@ export default function AdminDashboard({
                           const grandTotal = app.price + consumptionsSum;
 
                           return (
-                            <div className="bg-elegant-sub/50 border border-elegant-border rounded-xl p-2.5 max-w-xl flex items-center justify-between group">
+                            <div className="bg-elegant-sub/50 border border-elegant-border rounded-2xl p-3 max-w-xl flex items-center justify-between group">
                               <div>
                                 <div className="flex items-center gap-2">
-                                  <p className="text-xs font-bold text-white">{app.serviceName}</p>
+                                  <p className="text-sm font-bold text-white">{app.serviceName}</p>
                                   <button
                                     onClick={() => {
                                       setEditingServiceId(app.id);
                                       setTempServiceId(app.serviceId);
                                       setServiceError("");
                                     }}
-                                    className="text-[10px] font-bold text-elegant-gold hover:underline cursor-pointer opacity-80 hover:opacity-100"
+                                    className="text-xs font-bold text-elegant-gold hover:underline cursor-pointer opacity-80 hover:opacity-100"
                                     title="Cambiar el corte/servicio de esta cita"
                                   >
                                     [Cambiar corte]
                                   </button>
                                 </div>
-                                <div className="text-[10px] text-elegant-text-muted space-y-0.5 mt-0.5">
-                                  <p>Servicio: {formatPrice(app.price)}</p>
+                                <div className="text-xs text-neutral-300 space-y-0.5 mt-1">
+                                  <p>Servicio: <strong className="text-white">{formatPrice(app.price)}</strong></p>
                                   {consumptionsSum > 0 && (
                                     <p className="text-cyan-400 font-bold">
                                       + Consumos Nevera: {formatPrice(consumptionsSum)}
@@ -1736,16 +1736,16 @@ export default function AdminDashboard({
                                 </div>
                               </div>
 
-                              <div className="text-right shrink-0 ml-2">
+                              <div className="text-right shrink-0 ml-3">
                                 {consumptionsSum > 0 ? (
-                                  <div className="bg-cyan-950/80 border border-cyan-700/60 px-2.5 py-1 rounded-lg text-right">
-                                    <span className="text-[9px] uppercase tracking-wider text-cyan-300 font-extrabold block">TOTAL COBRO:</span>
-                                    <span className="text-xs font-black font-mono text-amber-300">
+                                  <div className="bg-cyan-950/80 border border-cyan-700/60 px-3 py-1.5 rounded-xl text-right">
+                                    <span className="text-xs uppercase tracking-wider text-cyan-300 font-extrabold block">TOTAL COBRO:</span>
+                                    <span className="text-sm font-black font-mono text-amber-300">
                                       {formatPrice(grandTotal)}
                                     </span>
                                   </div>
                                 ) : (
-                                  <span className="text-xs font-bold font-mono text-elegant-gold bg-elegant-gold/20 border border-elegant-gold/10 px-2 py-1 rounded-md">
+                                  <span className="text-sm font-bold font-mono text-elegant-gold bg-elegant-gold/20 border border-elegant-gold/20 px-3 py-1 rounded-xl shadow-xs">
                                     {formatPrice(app.price)}
                                   </span>
                                 )}
@@ -2078,10 +2078,10 @@ export default function AdminDashboard({
                               barberName: selfBarb?.name || "Tú" 
                             });
                           }}
-                          className="px-3 py-1.5 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all active:scale-95 cursor-pointer flex-1 md:flex-none text-center"
+                          className="px-3.5 py-2 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer flex-1 md:flex-none text-center shadow-xs"
                           title="Asignarme este turno a mi agenda"
                         >
-                          <Scissors className="h-3.5 w-3.5" />
+                          <Scissors className="h-4 w-4" />
                           <span>Asignarme</span>
                         </button>
                       )}
@@ -2090,10 +2090,10 @@ export default function AdminDashboard({
                       {app.status === "pending" && (
                         <button
                           onClick={() => onUpdateAppointment(app.id, { status: "confirmed" })}
-                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1 transition-all active:scale-95 cursor-pointer flex-1 md:flex-none text-center"
+                          className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer flex-1 md:flex-none text-center shadow-xs"
                           title="Confirmar Cita"
                         >
-                          <Check className="h-3.5 w-3.5" />
+                          <Check className="h-4 w-4" />
                           <span>Aprobar</span>
                         </button>
                       )}
@@ -2103,14 +2103,14 @@ export default function AdminDashboard({
                         <div className="flex gap-2 flex-wrap flex-1 md:flex-none">
                           <button
                             onClick={() => handleCompleteAppointmentWithReagenda(app, "efectivo")}
-                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all active:scale-95 cursor-pointer flex-1 md:flex-none text-center"
+                            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer flex-1 md:flex-none text-center shadow-xs"
                             title="Completar y pagar en Efectivo"
                           >
                             <span>💵 Efectivo</span>
                           </button>
                           <button
                             onClick={() => handleCompleteAppointmentWithReagenda(app, "transferencia")}
-                            className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition-all active:scale-95 cursor-pointer flex-1 md:flex-none text-center"
+                            className="px-3.5 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer flex-1 md:flex-none text-center shadow-xs"
                             title="Completar y pagar por Transferencia"
                           >
                             <span>💳 Transfer</span>
@@ -2122,10 +2122,10 @@ export default function AdminDashboard({
                       {app.status !== "completed" && app.status !== "canceled" && (
                         <button
                           onClick={() => startRescheduling(app)}
-                          className="px-3 py-1.5 border border-elegant-border bg-elegant-sub hover:bg-elegant-card text-elegant-text rounded-xl text-xs font-medium flex items-center justify-center gap-1 transition-all active:scale-95 cursor-pointer flex-1 md:flex-none text-center"
+                          className="px-3.5 py-2 border border-elegant-border bg-elegant-sub hover:bg-elegant-card text-elegant-text rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer flex-1 md:flex-none text-center"
                           title="Cambiar fecha u hora"
                         >
-                          <RefreshCw className="h-3.5 w-3.5 text-elegant-text-muted" />
+                          <RefreshCw className="h-3.5 w-3.5 text-elegant-gold" />
                           <span>Mover</span>
                         </button>
                       )}
@@ -2166,7 +2166,7 @@ export default function AdminDashboard({
                                 }
                               }
                             }}
-                            className="px-3 py-1.5 bg-rose-950/80 border border-rose-600/80 hover:bg-rose-900 text-rose-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all active:scale-95 cursor-pointer flex-1 md:flex-none text-center shadow-xs"
+                            className="px-3.5 py-2 bg-rose-950/80 border border-rose-600/80 hover:bg-rose-900 text-rose-200 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer flex-1 md:flex-none text-center shadow-xs"
                             title="Marcar cliente como no asistió y aplicar multa de $10.000 COP"
                           >
                             <UserX className="h-3.5 w-3.5 text-rose-300" />
@@ -2179,7 +2179,7 @@ export default function AdminDashboard({
                                 onUpdateAppointment(app.id, { status: "canceled" });
                               }
                             }}
-                            className="px-3 py-1.5 border border-rose-900/40 text-rose-400 hover:bg-rose-950/20 rounded-xl text-xs font-medium flex items-center justify-center gap-1 transition-all active:scale-95 cursor-pointer flex-1 md:flex-none text-center"
+                            className="px-3 py-1.5 border border-rose-900/50 text-rose-300 hover:bg-rose-950/40 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer flex-1 md:flex-none text-center"
                             title="Cancelar Cita sin sanción"
                           >
                             <X className="h-3.5 w-3.5" />

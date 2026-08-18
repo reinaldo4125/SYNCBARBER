@@ -112,8 +112,8 @@ export default function BarberLogin({ onLogin, onCancel }: BarberLoginProps) {
       </form>
 
       <div className="border-t border-elegant-border/60 pt-4 text-center">
-        <p className="text-[10px] text-elegant-text-muted">
-          Pistas de prueba: Administrador (<strong>admin</strong> / <strong>admin</strong>) | Barberos (<strong>carlos</strong> o <strong>mateo</strong> o <strong>andres</strong> / <strong>123</strong>)
+        <p className="text-xs text-elegant-text-muted">
+          Pistas de demo: Administrador (<strong>admin</strong> / <strong>admin</strong>) | Barberos (<strong>carlos</strong> o <strong>mateo</strong> o <strong>andres</strong> / <strong>123</strong>)
         </p>
       </div>
     </div>

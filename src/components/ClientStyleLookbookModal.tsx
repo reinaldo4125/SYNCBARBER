@@ -16,7 +16,6 @@ import {
   ChevronRight,
   SlidersHorizontal
 } from "lucide-react";
-import { DEFAULT_CATALOG_STYLES } from "../data/defaultCatalogStyles";
 
 interface ClientStyleLookbookModalProps {
   isOpen: boolean;
@@ -37,7 +36,7 @@ export default function ClientStyleLookbookModal({
   currentSelectedStyleId,
   formatPrice
 }: ClientStyleLookbookModalProps) {
-  const [styles, setStyles] = useState<CatalogStyle[]>(DEFAULT_CATALOG_STYLES);
+  const [styles, setStyles] = useState<CatalogStyle[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -62,12 +61,12 @@ export default function ClientStyleLookbookModal({
         const res = await fetch("/api/catalog-styles");
         if (res.ok) {
           const data = await res.json();
-          if (data.styles && Array.isArray(data.styles) && data.styles.length > 0) {
+          if (data.styles && Array.isArray(data.styles)) {
             // Filter only active styles for client
             const activeOnly = data.styles.filter((s: CatalogStyle) => s.isActive);
-            if (activeOnly.length > 0) {
-              setStyles(activeOnly);
-            }
+            setStyles(activeOnly);
+          } else {
+            setStyles([]);
           }
         }
       } catch (err) {
