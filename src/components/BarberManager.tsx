@@ -70,6 +70,20 @@ export default function BarberManager({
   ];
 
   const serviceCategories = config?.serviceCategories || DEFAULT_CATEGORIES;
+  
+  // License Limits Calculation (including custom negotiated quotas)
+  const licenseType = (config?.licenseType || activeLicense || "basica") as "basica" | "profesional" | "premium";
+  const defaultMaxBarbers = licenseType === "basica" ? 2 : licenseType === "profesional" ? 5 : 99;
+  const customMax = config?.customMaxBarbers ? Number(config.customMaxBarbers) : undefined;
+  const maxBarbers = customMax || defaultMaxBarbers;
+  const isCustomQuota = Boolean(customMax && customMax !== defaultMaxBarbers);
+  const activeBarbersCount = barbers.filter(b => b.isActive !== false).length;
+  const isLimitReached = activeBarbersCount >= maxBarbers;
+  const basePlanName = licenseType === "basica" ? "Plan Básica" : licenseType === "profesional" ? "Plan Profesional" : "Plan Premium";
+  const planName = isCustomQuota
+    ? `${basePlanName} (Cupo Negociado: ${maxBarbers})`
+    : licenseType === "basica" ? "Plan Básica (Máx 2)" : licenseType === "profesional" ? "Plan Profesional (Máx 5)" : "Plan Premium Enterprise (Ilimitado)";
+
   // Editing state
   const [editingBarber, setEditingBarber] = useState<Barber | null>(null);
   
@@ -240,23 +254,69 @@ export default function BarberManager({
     <div className="space-y-6" id="barber-manager">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-elegant-border pb-4">
         <div>
-          <h2 className="text-xl font-extrabold text-white font-sans flex items-center gap-2">
-            <Users className="h-5 w-5 text-elegant-gold" />
-            Administrar Barberos del Salón
-          </h2>
-          <p className="text-xs text-elegant-text-muted">Crea cuentas de acceso de barberos, edita especialidades y controla su estado de actividad.</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-xl font-extrabold text-white font-sans flex items-center gap-2">
+              <Users className="h-5 w-5 text-elegant-gold" />
+              Administrar Barberos del Salón
+            </h2>
+            <span className={`text-[10px] font-bold font-mono px-2.5 py-0.5 rounded-full border ${
+              isLimitReached
+                ? "bg-amber-950/80 text-amber-300 border-amber-800"
+                : "bg-emerald-950/80 text-emerald-300 border-emerald-800"
+            }`}>
+              Cupos: {activeBarbersCount} / {maxBarbers >= 99 ? "∞ Ilimitado" : maxBarbers} ({planName})
+            </span>
+          </div>
+          <p className="text-xs text-elegant-text-muted mt-0.5">
+            Crea cuentas de acceso de barberos, edita especialidades y controla su estado de actividad.
+          </p>
         </div>
         
         {!showAddForm && !editingBarber && (
-          <button
-            onClick={() => { resetForm(); setShowAddForm(true); }}
-            className="px-4 py-2 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg font-bold text-xs rounded-xl cursor-pointer transition-colors flex items-center gap-1.5"
-          >
-            <UserPlus className="h-4 w-4" />
-            <span>Agregar Nuevo Barbero</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {isLimitReached ? (
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-amber-400 font-bold hidden md:inline">
+                  ⚠️ Límite del plan alcanzado
+                </span>
+                <button
+                  type="button"
+                  disabled
+                  title={`Tu ${planName} tiene un límite de ${maxBarbers} barberos. Actualiza tu plan para agregar más.`}
+                  className="px-4 py-2 bg-neutral-800 text-neutral-500 font-bold text-xs rounded-xl cursor-not-allowed flex items-center gap-1.5 border border-neutral-700 opacity-60"
+                >
+                  <UserPlus className="h-4 w-4" />
+                  <span>Límite Alcanzado ({activeBarbersCount}/{maxBarbers})</span>
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => { resetForm(); setShowAddForm(true); }}
+                className="px-4 py-2 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg font-bold text-xs rounded-xl cursor-pointer transition-colors flex items-center gap-1.5"
+              >
+                <UserPlus className="h-4 w-4" />
+                <span>Agregar Nuevo Barbero</span>
+              </button>
+            )}
+          </div>
         )}
       </div>
+
+      {isLimitReached && (
+        <div className="p-4 bg-amber-950/30 border border-amber-500/40 text-amber-200 rounded-2xl text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="h-5 w-5 text-amber-400 shrink-0" />
+            <div>
+              <p className="font-bold text-amber-300">
+                Has alcanzado el límite máximo de {maxBarbers} barberos permitidos para tu {planName}.
+              </p>
+              <p className="text-[11px] text-amber-200/80 mt-0.5">
+                Para registrar más profesionales o habilitar más puestos en simultáneo, solicita una clave de actualización a un plan superior (Profesional o Premium).
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {successMsg && (
         <div className="p-3.5 bg-emerald-950/40 border border-emerald-800/50 text-emerald-300 rounded-xl text-xs flex items-center gap-2">

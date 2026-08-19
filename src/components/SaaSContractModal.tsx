@@ -51,15 +51,18 @@ export default function SaaSContractModal({
   if (!isOpen || !tenant) return null;
 
   // Extract license or tenant fallback data
+  const isComplimentary = Boolean(license?.isComplimentary || license?.billingExempt || tenant?.config?.isComplimentary || tenant?.config?.billingExempt || tenant?.isComplimentary);
   const licType = (license?.type || tenant?.config?.licenseType || "profesional").toUpperCase();
   const durationMonths = license?.durationMonths || 12;
   const expirationDate = license?.expirationDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
   const licenseKey = license?.key || tenant?.config?.licenseKey || "SYNC-PRO-2026-DEMO";
   const createdAt = license?.createdAt ? new Date(license.createdAt).toLocaleDateString("es-CO") : new Date().toLocaleDateString("es-CO");
 
-  // Calculate pricing based on license type
+  // Calculate pricing based on license type and complimentary status
   let monthlyPrice = 0;
-  if (licType.includes("PREMIUM")) {
+  if (isComplimentary) {
+    monthlyPrice = 0;
+  } else if (licType.includes("PREMIUM")) {
     monthlyPrice = pricingConfig?.premium?.price || 149000;
   } else if (licType.includes("PROFESIONAL")) {
     monthlyPrice = pricingConfig?.profesional?.price || 89000;
@@ -71,8 +74,8 @@ export default function SaaSContractModal({
 
   const annualTotalAmount = monthlyPrice * durationMonths;
 
-  const formattedMonthlyPrice = formatPrice(monthlyPrice);
-  const formattedAnnualTotal = formatPrice(annualTotalAmount);
+  const formattedMonthlyPrice = isComplimentary ? "$0 COP (🎁 100% Bonificada / Cortesía)" : formatPrice(monthlyPrice);
+  const formattedAnnualTotal = isComplimentary ? "$0 COP (Exenta de Cobro)" : formatPrice(annualTotalAmount);
 
   // Generate unique Contract ID / Hash
   const contractId = `CONTRATO-SYNCBARBER-${(tenant.id || "SAAS").toUpperCase()}-${createdAt.replace(/\//g, "")}`;

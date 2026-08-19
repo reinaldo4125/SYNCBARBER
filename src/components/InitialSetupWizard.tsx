@@ -108,6 +108,16 @@ export default function InitialSetupWizard({
       setError("Este nombre de usuario ya está asignado a otro barbero.");
       return;
     }
+
+    // Check license limits
+    const currentLic = initialConfig.licenseType || "basica";
+    const maxAllowed = currentLic === "basica" ? 2 : currentLic === "profesional" ? 5 : 99;
+    const activeCount = barbers.filter(b => b.isActive !== false).length;
+    if (activeCount >= maxAllowed) {
+      setError(`Límite alcanzado: Tu licencia actual (${currentLic}) solo permite registrar hasta ${maxAllowed} barberos.`);
+      return;
+    }
+
     setError("");
     const newBarber: Barber = {
       id: "b_setup_" + Date.now().toString(),

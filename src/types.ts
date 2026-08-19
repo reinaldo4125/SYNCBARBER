@@ -237,6 +237,9 @@ export interface SalonConfig {
   billingCustomMessage?: string;
   billingPaymentLink?: string;
   billingAccountInfo?: string;
+  isComplimentary?: boolean; // Licencia bonificada/obsequiada ($0 facturación)
+  billingExempt?: boolean; // Exenta de cobros recurrentes en SaaS
+  customMaxBarbers?: number; // Cupo negociado especial autorizado para el salón
 
   // Catálogo de Cortes & Estilos Lookbook
   catalogStyles?: CatalogStyle[];

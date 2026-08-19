@@ -59,6 +59,7 @@ import {
 import { SalonConfig } from "../types";
 import SaaSContractModal from "./SaaSContractModal";
 import TelemetrySimulator from "./TelemetrySimulator";
+import { DeveloperBarberManagerModal } from "./DeveloperBarberManagerModal";
 
 interface DeveloperPanelProps {
   config: SalonConfig;
@@ -74,6 +75,17 @@ interface License {
   createdAt: string;
   activatedAt?: string;
   status: 'active' | 'pending' | 'expired';
+  isComplimentary?: boolean;
+  billingExempt?: boolean;
+  durationMonths?: number;
+  expirationDate?: string;
+  daysRemaining?: number;
+  ownerName?: string;
+  ownerEmail?: string;
+  phone?: string;
+  city?: string;
+  address?: string;
+  tenantId?: string;
 }
 
 export default function DeveloperPanel({
@@ -210,6 +222,9 @@ export default function DeveloperPanel({
   const [selectedContractTenant, setSelectedContractTenant] = useState<any | null>(null);
   const [selectedContractLicense, setSelectedContractLicense] = useState<any | null>(null);
   const [showContractModal, setShowContractModal] = useState<boolean>(false);
+
+  // States for Developer Barber Management & Negotiated Quotas
+  const [selectedBarberTenant, setSelectedBarberTenant] = useState<any | null>(null);
 
   const openContractModal = (tenant: any, license?: any) => {
     setSelectedContractTenant(tenant);
@@ -395,6 +410,8 @@ export default function DeveloperPanel({
   const [licenseTypeInput, setLicenseTypeInput] = useState<'basica' | 'profesional' | 'premium'>("premium");
   const [selectedTemplate, setSelectedTemplate] = useState<'gold' | 'urban' | 'traditional'>("gold");
   const [durationMonthsInput, setDurationMonthsInput] = useState<number>(1);
+  const [isComplimentaryInput, setIsComplimentaryInput] = useState<boolean>(false);
+  const [customMaxBarbersInput, setCustomMaxBarbersInput] = useState<string>("default");
   const [ownerEmailInput, setOwnerEmailInput] = useState("");
   const [openTimeInput, setOpenTimeInput] = useState("08:00");
   const [closeTimeInput, setCloseTimeInput] = useState("20:00");
@@ -434,9 +451,10 @@ export default function DeveloperPanel({
   const [simulatedEmailModal, setSimulatedEmailModal] = useState<any>(null);
   const [sendingReminderKey, setSendingReminderKey] = useState<string | null>(null);
   const [renewingKey, setRenewingKey] = useState<string | null>(null);
-  const [editExpModal, setEditExpModal] = useState<{ key: string; salonName: string; currentExp: string; currentEmail?: string } | null>(null);
+  const [editExpModal, setEditExpModal] = useState<{ key: string; salonName: string; currentExp: string; currentEmail?: string; currentIsComplimentary?: boolean } | null>(null);
   const [customExpDateInput, setCustomExpDateInput] = useState("");
   const [customEmailInput, setCustomEmailInput] = useState("");
+  const [customIsComplimentaryInput, setCustomIsComplimentaryInput] = useState(false);
 
   // Manual Activation Input
   const [activationInput, setActivationInput] = useState("");
@@ -512,6 +530,41 @@ export default function DeveloperPanel({
     } catch (e) {
       console.error(e);
       addLog("SYS", "Fallo al comunicar actualización de licencia", "error");
+    } finally {
+      setUpdatingLicense(false);
+    }
+  };
+
+  const handleToggleTenantComplimentary = async (tenantId: string, currentIsComplimentary: boolean) => {
+    try {
+      setUpdatingLicense(true);
+      const nextStatus = !currentIsComplimentary;
+      addLog("LICENCIA", `Cambiando condición comercial de '${tenantId}' a ${nextStatus ? "Cortesía ($0)" : "Regular de Pago"}...`, "info");
+      const res = await fetch(`/api/developer/tenants/${tenantId}/complimentary`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isComplimentary: nextStatus })
+      });
+
+      if (res.ok) {
+        triggerToast(
+          nextStatus ? "🎁 Licencia de Cortesía Activada" : "💰 Licencia Regular Activada",
+          nextStatus 
+            ? `La barbería '${tenantId}' ha sido configurada como cortesía/obsequio ($0 facturación).`
+            : `La barbería '${tenantId}' ha sido cambiada a licencia regular de pago comercial.`,
+          "success"
+        );
+        addLog("LICENCIA", `Condición comercial de '${tenantId}' cambiada a ${nextStatus ? "Cortesía ($0)" : "Regular"}`, "success");
+        await fetchTenants();
+        fetchLicenses(true);
+        fetchBiData();
+      } else {
+        const err = await res.json();
+        triggerToast("Error", err.error || "No se pudo cambiar la condición comercial.", "warning");
+      }
+    } catch (e) {
+      console.error(e);
+      addLog("SYS", "Fallo al comunicar cambio de condición comercial", "error");
     } finally {
       setUpdatingLicense(false);
     }
@@ -790,6 +843,7 @@ export default function DeveloperPanel({
           licenseType: licenseTypeInput,
           templateType: selectedTemplate,
           durationMonths: durationMonthsInput,
+          isComplimentary: isComplimentaryInput,
           ownerName: ownerNameInput.trim() || undefined,
           ownerEmail: ownerEmailInput.trim() || undefined,
           phone: phoneInput.trim() || undefined,
@@ -799,15 +853,17 @@ export default function DeveloperPanel({
           openTime: openTimeInput || "08:00",
           closeTime: closeTimeInput || "20:00",
           initialBarbersCount: barbersCountInput || 2,
-          customAdminPassword: customAdminPasswordInput.trim() || "admin"
+          customAdminPassword: customAdminPasswordInput.trim() || "admin",
+          customMaxBarbers: customMaxBarbersInput === "default" || !customMaxBarbersInput ? undefined : Number(customMaxBarbersInput)
         })
       });
 
       if (res.ok) {
         const data = await res.json();
-        triggerToast("¡Barbería & Licencia Creada!", `Licencia ${licenseTypeInput.toUpperCase()} activa para '${salonNameInput}'`, "success");
+        const complimentaryMsg = isComplimentaryInput ? " [🎁 Licencia de Cortesía / Exenta de Cobro]" : "";
+        triggerToast("¡Barbería & Licencia Creada!", `Licencia ${licenseTypeInput.toUpperCase()}${complimentaryMsg} activa para '${salonNameInput}'`, "success");
         triggerToast("Credenciales Admin", `Usuario: admin-${data.tenantId} | Clave: ${customAdminPasswordInput || 'admin'}`, "info");
-        addLog("LICENCIA", `Nueva clave generada: ${data.license.key} (Vence: ${data.license.expirationDate})`, "success");
+        addLog("LICENCIA", `Nueva clave generada: ${data.license.key} (Vence: ${data.license.expirationDate})${complimentaryMsg}`, "success");
         addLog("SaaS", `Inquilino '${data.tenantId}' registrado con ${barbersCountInput} barberos iniciales.`, "success");
         fetchLicenses(true);
         const updatedTenants = await fetchTenants();
@@ -824,7 +880,8 @@ export default function DeveloperPanel({
           phone: phoneInput,
           city: cityInput,
           address: addressInput,
-          config: { licenseType: licenseTypeInput, licenseKey: data.license?.key }
+          isComplimentary: isComplimentaryInput,
+          config: { licenseType: licenseTypeInput, licenseKey: data.license?.key, isComplimentary: isComplimentaryInput, billingExempt: isComplimentaryInput }
         };
 
         triggerToast("📜 Contrato SaaS Generado", "Generado contrato formal listo para PDF, WhatsApp y Email.", "success");
@@ -836,6 +893,7 @@ export default function DeveloperPanel({
         setPhoneInput("");
         setCityInput("");
         setAddressInput("");
+        setIsComplimentaryInput(false);
         setTaglineInput("Arte, Precisión & Estilo Masculino");
       } else {
         throw new Error("Error en el servidor");
@@ -905,35 +963,38 @@ export default function DeveloperPanel({
     }
   };
 
-  // Handler to save modified custom expiration date
+  // Handler to save modified custom expiration date & complimentary status
   const handleSaveUpdatedDates = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editExpModal || !customExpDateInput) return;
 
     try {
-      addLog("LICENCIA", `Actualizando fecha de inactivación de ${editExpModal.key} a ${customExpDateInput}...`, "info");
+      addLog("LICENCIA", `Actualizando parámetros de ${editExpModal.key} (Vencimiento: ${customExpDateInput}, Cortesía: ${customIsComplimentaryInput ? "SÍ" : "NO"})...`, "info");
       const res = await fetch("/api/licenses/update-dates", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           key: editExpModal.key,
           expirationDate: customExpDateInput,
-          ownerEmail: customEmailInput.trim() || undefined
+          ownerEmail: customEmailInput.trim() || undefined,
+          isComplimentary: customIsComplimentaryInput
         })
       });
 
       if (res.ok) {
-        triggerToast("Fecha Actualizada", `Nueva fecha de inactivación: ${customExpDateInput}`, "success");
-        addLog("LICENCIA", `Inactivación de ${editExpModal.key} ajustada a ${customExpDateInput}`, "success");
+        triggerToast("Licencia Actualizada", `Parámetros guardados correctamente para ${editExpModal.salonName}`, "success");
+        addLog("LICENCIA", `Licencia ${editExpModal.key} actualizada (Inactivación: ${customExpDateInput})`, "success");
         setEditExpModal(null);
         fetchLicenses(true);
+        fetchTenants();
+        fetchBiData();
       } else {
         const err = await res.json();
-        triggerToast("Error", err.error || "Fallo al guardar nueva fecha", "warning");
+        triggerToast("Error", err.error || "Fallo al guardar cambios", "warning");
       }
     } catch (e) {
       console.error(e);
-      addLog("SYS", "Error al actualizar fecha de licencia", "error");
+      addLog("SYS", "Error al actualizar licencia", "error");
     }
   };
 
@@ -1065,15 +1126,31 @@ export default function DeveloperPanel({
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  const getLicenseBadge = (type: string) => {
+  const getLicenseBadge = (type: string, isComplimentary?: boolean) => {
+    let badge = null;
     switch (type) {
       case "premium":
-        return <span className="text-[10px] bg-amber-950 text-elegant-gold border border-amber-800/80 px-2 py-0.5 rounded-full font-bold">🥇 Premium</span>;
+        badge = <span className="text-[10px] bg-amber-950 text-elegant-gold border border-amber-800/80 px-2 py-0.5 rounded-full font-bold">🥇 Premium</span>;
+        break;
       case "profesional":
-        return <span className="text-[10px] bg-slate-800 text-slate-200 border border-slate-700 px-2 py-0.5 rounded-full font-bold">🥈 Profesional</span>;
+        badge = <span className="text-[10px] bg-slate-800 text-slate-200 border border-slate-700 px-2 py-0.5 rounded-full font-bold">🥈 Profesional</span>;
+        break;
       default:
-        return <span className="text-[10px] bg-neutral-900 text-neutral-400 border border-neutral-800 px-2 py-0.5 rounded-full font-bold">🥉 Básica</span>;
+        badge = <span className="text-[10px] bg-neutral-900 text-neutral-400 border border-neutral-800 px-2 py-0.5 rounded-full font-bold">🥉 Básica</span>;
+        break;
     }
+
+    if (isComplimentary) {
+      return (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {badge}
+          <span className="text-[9px] bg-pink-950/90 text-pink-300 border border-pink-700/80 px-2 py-0.5 rounded-full font-extrabold font-mono shadow-xs inline-flex items-center gap-1">
+            🎁 Cortesía ($0)
+          </span>
+        </div>
+      );
+    }
+    return badge;
   };
 
   // Fetch Announcements
@@ -1848,6 +1925,97 @@ export default function DeveloperPanel({
                         </button>
                       ))}
                     </div>
+
+                    {/* Licencia de Cortesía / Obsequio ($0 Facturación) */}
+                    <div className={`mt-2 p-3 rounded-xl border transition-all ${
+                      isComplimentaryInput 
+                        ? "bg-pink-950/40 border-pink-500/60 ring-1 ring-pink-500/30" 
+                        : "bg-neutral-900/60 border-neutral-800 hover:border-neutral-700"
+                    }`}>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="space-y-0.5 min-w-0">
+                          <label 
+                            htmlFor="complimentary-toggle" 
+                            className="text-[11px] font-extrabold text-white flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <span className="text-sm">🎁</span>
+                            <span className={isComplimentaryInput ? "text-pink-300 font-black" : "text-neutral-200"}>
+                              Licencia de Cortesía / Obsequio
+                            </span>
+                            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded font-bold bg-pink-950 text-pink-300 border border-pink-700/60">
+                              $0 Facturación
+                            </span>
+                          </label>
+                          <p className="text-[10px] text-neutral-400 leading-relaxed">
+                            Activa esta casilla para licencias regaladas o de cortesía. Quedará exenta de cobros y excluida de la facturación mensual en las métricas SaaS.
+                          </p>
+                        </div>
+                        <button
+                          id="complimentary-toggle"
+                          type="button"
+                          onClick={() => setIsComplimentaryInput(!isComplimentaryInput)}
+                          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                            isComplimentaryInput ? 'bg-pink-500' : 'bg-neutral-800'
+                          }`}
+                          title="Habilitar como licencia de regalo / cortesía exenta de cobro"
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                              isComplimentaryInput ? 'translate-x-5' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Cupo de Barberos (Negociación Especial) */}
+                    <div className="mt-2.5 p-3 rounded-xl border border-neutral-800 bg-neutral-900/60 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-extrabold text-white flex items-center gap-1.5">
+                          <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+                          <span>Cupo de Barberos (Negociación Especial)</span>
+                        </label>
+                        <span className="text-[9px] font-mono text-amber-400 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-800/80">
+                          Negociación Comercial
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-neutral-400 leading-relaxed">
+                        Si acordaste permitir más barberos en el Plan Básico o Profesional sin migrarlo de plan, autoriza aquí su cupo total:
+                      </p>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                        {[
+                          { id: "default", label: "Por defecto del Plan", sub: "Bás: 2, Pro: 5, Prem: ∞" },
+                          { id: "3", label: "3 Barberos", sub: "+1 extra negociado ✨" },
+                          { id: "4", label: "4 Barberos", sub: "+2 extra negociados ✨" },
+                          { id: "6", label: "6 Barberos", sub: "Cupo Pro ampliado ✨" },
+                        ].map((q) => (
+                          <button
+                            key={q.id}
+                            type="button"
+                            onClick={() => setCustomMaxBarbersInput(q.id)}
+                            className={`p-2 rounded-xl text-left border cursor-pointer transition-all ${
+                              customMaxBarbersInput === q.id
+                                ? "bg-amber-500/20 border-amber-500 text-amber-300 font-extrabold"
+                                : "bg-elegant-sub border-elegant-border text-neutral-400 hover:border-neutral-700"
+                            }`}
+                          >
+                            <span className="block text-[10px] font-bold">{q.label}</span>
+                            <span className="block text-[8px] opacity-70 font-mono mt-0.5">{q.sub}</span>
+                          </button>
+                        ))}
+                      </div>
+                      {customMaxBarbersInput !== "default" && customMaxBarbersInput !== "3" && customMaxBarbersInput !== "4" && customMaxBarbersInput !== "6" && (
+                        <input
+                          type="number"
+                          min="1"
+                          max="100"
+                          placeholder="Cupo personalizado (ej: 8)"
+                          value={customMaxBarbersInput}
+                          onChange={(e) => setCustomMaxBarbersInput(e.target.value)}
+                          className="w-full mt-1 px-3 py-1.5 bg-black border border-neutral-700 text-white text-xs font-mono rounded-xl focus:outline-none focus:border-amber-400"
+                        />
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -1937,6 +2105,17 @@ export default function DeveloperPanel({
                       })()}
                     </span>
                   </div>
+                  {isComplimentaryInput ? (
+                    <div className="text-[9px] text-pink-300 font-bold pt-1 border-t border-pink-950 flex items-center justify-between">
+                      <span className="flex items-center gap-1">🎁 Condición Comercial:</span>
+                      <span className="bg-pink-950 border border-pink-700/60 px-1.5 py-0.2 rounded">100% Bonificada / $0 Facturación</span>
+                    </div>
+                  ) : (
+                    <div className="text-[9px] text-amber-300 font-bold pt-1 border-t border-neutral-900 flex items-center justify-between">
+                      <span>💰 Condición Comercial:</span>
+                      <span>Licencia Regular de Pago</span>
+                    </div>
+                  )}
                   <div className="text-[9px] text-neutral-400 pt-1 border-t border-neutral-900 flex justify-between">
                     <span>👤 Usuario Admin:</span>
                     <span className="text-amber-300 font-bold">
@@ -2100,7 +2279,7 @@ export default function DeveloperPanel({
                           )}
                         </div>
                       </td>
-                      <td className="py-3 px-3">{getLicenseBadge(lic.licenseType)}</td>
+                      <td className="py-3 px-3">{getLicenseBadge(lic.licenseType, Boolean(lic.isComplimentary || lic.billingExempt))}</td>
                       <td className="py-3 px-3 font-mono font-bold text-neutral-400">
                         <div className="flex items-center gap-1.5">
                           <span className="bg-elegant-sub border border-elegant-border px-2 py-1 rounded-lg text-[10px]">
@@ -2200,22 +2379,46 @@ export default function DeveloperPanel({
                             <span>+1 Mes</span>
                           </button>
 
-                          {/* Edit Expiration Date Button */}
+                          {/* Edit Expiration Date & Settings Button */}
                           <button
                             onClick={() => {
+                              const isComp = Boolean(lic.isComplimentary || lic.billingExempt);
                               setEditExpModal({
                                 key: lic.key,
                                 salonName: lic.salonName,
                                 currentExp: lic.expirationDate || "2026-12-31",
-                                currentEmail: lic.ownerEmail || ""
+                                currentEmail: lic.ownerEmail || "",
+                                currentIsComplimentary: isComp
                               });
                               setCustomExpDateInput(lic.expirationDate || "2026-12-31");
                               setCustomEmailInput(lic.ownerEmail || "");
+                              setCustomIsComplimentaryInput(isComp);
                             }}
                             className="p-1.5 bg-elegant-sub hover:bg-neutral-800 text-neutral-300 border border-elegant-border text-[10px] rounded-lg transition-all cursor-pointer"
-                            title="Modificar fecha de inactivación manualmente"
+                            title="Modificar fecha de inactivación y condición comercial de cortesía"
                           >
                             <Edit3 className="h-3 w-3" />
+                          </button>
+
+                          {/* Quick Complimentary Toggle Button */}
+                          <button
+                            onClick={() => {
+                              const tenantId = lic.tenantId || tenantsList.find(t => t.name === lic.salonName || t.activeLicenseKey === lic.key)?.id || "bella-barba";
+                              handleToggleTenantComplimentary(tenantId, Boolean(lic.isComplimentary || lic.billingExempt));
+                            }}
+                            className={`px-2 py-1 border text-[10px] font-bold rounded-lg transition-all cursor-pointer inline-flex items-center gap-1 ${
+                              Boolean(lic.isComplimentary || lic.billingExempt)
+                                ? "bg-pink-950/80 hover:bg-pink-900 border-pink-700 text-pink-300"
+                                : "bg-neutral-900 hover:bg-neutral-800 border-neutral-700 text-neutral-400 hover:text-white"
+                            }`}
+                            title={
+                              Boolean(lic.isComplimentary || lic.billingExempt)
+                                ? "Licencia de Cortesía ($0). Clic para cambiar a Cobro Regular."
+                                : "Licencia Comercial. Clic para regalar / marcar de Cortesía ($0)."
+                            }
+                          >
+                            <span>🎁</span>
+                            <span>{Boolean(lic.isComplimentary || lic.billingExempt) ? "Cortesía ($0)" : "Hacer Cortesía"}</span>
                           </button>
 
                           {!isActiveOnThisSalon && !isExpired && (
@@ -3097,6 +3300,14 @@ export default function DeveloperPanel({
                           
                           <div className="flex flex-wrap gap-1.5 mt-1.5">
                             <button
+                              onClick={() => setSelectedBarberTenant(t)}
+                              className="text-[9px] text-amber-400 hover:text-amber-300 font-extrabold flex items-center gap-1 cursor-pointer bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-800/80 transition-colors shadow-sm"
+                              title="Gestionar barberos, agregar nuevo barbero directo o negociar cupos"
+                            >
+                              <Scissors className="h-2.5 w-2.5 text-amber-400" />
+                              ✂️ Barberos & Cupos
+                            </button>
+                            <button
                               onClick={() => startEditingBranding(t)}
                               className="text-[9px] text-elegant-gold hover:text-amber-400 font-extrabold flex items-center gap-1 cursor-pointer bg-elegant-sub/60 px-1.5 py-0.5 rounded border border-elegant-border/60 transition-colors"
                             >
@@ -3142,15 +3353,45 @@ export default function DeveloperPanel({
                           </div>
                         </td>
                         <td className="py-3 px-2">
-                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border ${
-                            t.licenseType === "premium" 
-                              ? "bg-amber-950/80 text-elegant-gold border-amber-800/60" 
-                              : t.licenseType === "profesional" 
-                                ? "bg-slate-800 text-slate-200 border-slate-700" 
-                                : "bg-neutral-900 text-neutral-400 border-neutral-800"
-                          }`}>
-                            {t.licenseType}
-                          </span>
+                          <div className="flex flex-col items-start gap-1.5">
+                            <div className="flex items-center gap-1">
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border ${
+                                t.licenseType === "premium" 
+                                   ? "bg-amber-950/80 text-elegant-gold border-amber-800/60" 
+                                   : t.licenseType === "profesional" 
+                                     ? "bg-slate-800 text-slate-200 border-slate-700" 
+                                     : "bg-neutral-900 text-neutral-400 border-neutral-800"
+                              }`}>
+                                {t.licenseType}
+                              </span>
+                              {t.config?.customMaxBarbers && (
+                                <span className="text-[8.5px] font-mono font-bold text-emerald-400 bg-emerald-950/90 px-1.5 py-0.5 rounded border border-emerald-800 flex items-center gap-0.5" title={`Cupo especial negociado: ${t.config.customMaxBarbers} barberos`}>
+                                  <Sparkles className="h-2 w-2" />
+                                  Cupo: {t.config.customMaxBarbers}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Dynamic Toggle Button for Complimentary Status */}
+                            <button
+                              type="button"
+                              disabled={updatingLicense}
+                              onClick={() => handleToggleTenantComplimentary(t.id, Boolean(t.isComplimentary || t.config?.isComplimentary || t.config?.billingExempt))}
+                              className={`px-2 py-0.5 rounded-md text-[8.5px] font-extrabold cursor-pointer transition-all border inline-flex items-center gap-1 ${
+                                Boolean(t.isComplimentary || t.config?.isComplimentary || t.config?.billingExempt)
+                                  ? "bg-pink-950/90 text-pink-300 border-pink-700/80 hover:bg-pink-900"
+                                  : "bg-neutral-900 text-neutral-400 border-neutral-700 hover:text-white hover:border-neutral-500"
+                              }`}
+                              title={
+                                Boolean(t.isComplimentary || t.config?.isComplimentary || t.config?.billingExempt)
+                                  ? "Actualmente es de Cortesía ($0). Clic para cambiar a Licencia Regular de Pago."
+                                  : "Actualmente es de Cobro Comercial. Clic para otorgar de Cortesía / Obsequio ($0)."
+                              }
+                            >
+                              <span>🎁</span>
+                              <span>{Boolean(t.isComplimentary || t.config?.isComplimentary || t.config?.billingExempt) ? "Cortesía ($0)" : "Hacer Cortesía"}</span>
+                            </button>
+                          </div>
                         </td>
                         <td className="py-3 px-2">
                           <div className="flex gap-1.5">
@@ -3428,6 +3669,22 @@ export default function DeveloperPanel({
               </div>
             </div>
 
+            {/* Aviso si la barbería seleccionada tiene Licencia de Cortesía */}
+            {Boolean(tenantsList.find(t => t.id === selectedBillingTenantId)?.config?.isComplimentary || tenantsList.find(t => t.id === selectedBillingTenantId)?.isComplimentary) && (
+              <div className="bg-pink-950/30 border border-pink-700/60 rounded-2xl p-4 flex items-center gap-3">
+                <span className="text-2xl">🎁</span>
+                <div className="space-y-0.5">
+                  <h4 className="text-xs font-bold text-pink-300 flex items-center gap-2">
+                    <span>Inquilino con Licencia de Cortesía / Obsequio</span>
+                    <span className="text-[9px] bg-pink-950 text-pink-300 border border-pink-700/60 px-1.5 py-0.2 rounded font-mono font-bold">$0 Facturación</span>
+                  </h4>
+                  <p className="text-[11px] text-pink-200/80">
+                    Esta barbería fue registrada como bonificada / de cortesía. Su cobro periódico regular es $0 COP y está exenta de facturación recurrente en el MRR global.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Controles de Estado de Cobro (Izquierda) */}
               <div className="lg:col-span-6 bg-neutral-950/80 border border-neutral-800 rounded-3xl p-5 space-y-4">
@@ -3579,9 +3836,13 @@ export default function DeveloperPanel({
               <span className="text-[10px] text-elegant-text-muted font-bold uppercase tracking-wider block">Licencias Activas</span>
               <div className="mt-2 flex items-baseline gap-2">
                 <span className="text-2xl font-black text-white">{biData ? biData.summary.activeLicensesCount : "0"}</span>
-                <span className="text-[10px] text-cyan-400 font-bold font-mono">En Producción</span>
+                <span className="text-[10px] text-cyan-400 font-bold font-mono">
+                  {biData?.summary?.paidLicensesCount ?? 0} de Pago · {biData?.summary?.complimentaryLicensesCount ?? 0} Cortesía
+                </span>
               </div>
-              <p className="text-[9px] text-neutral-500 mt-2">Salones que han completado el registro y tienen una clave válida.</p>
+              <p className="text-[9px] text-neutral-500 mt-2">
+                Salones registrados: <strong className="text-emerald-400">{biData?.summary?.paidLicensesCount ?? 0}</strong> con cobro activo, <strong className="text-pink-300">{biData?.summary?.complimentaryLicensesCount ?? 0}</strong> en cortesía ($0).
+              </p>
             </div>
 
             <div className="bg-elegant-card border border-elegant-border rounded-2xl p-5 flex flex-col justify-between">
@@ -3672,12 +3933,13 @@ export default function DeveloperPanel({
               <div className="space-y-4 pt-2">
                 {biData && biData.licenseCounts ? (
                   ([
-                    { name: "Premium ($120k/mes)", count: biData.licenseCounts.premium, color: "from-amber-500 to-elegant-gold" },
-                    { name: "Profesional ($60k/mes)", count: biData.licenseCounts.profesional, color: "from-cyan-500 to-cyan-300" },
-                    { name: "Básica ($30k/mes)", count: biData.licenseCounts.basica, color: "from-slate-500 to-slate-300" }
+                    { name: "Premium ($139k/mes)", count: biData.licenseCounts.premium, color: "from-amber-500 to-elegant-gold" },
+                    { name: "Profesional ($75k/mes)", count: biData.licenseCounts.profesional, color: "from-cyan-500 to-cyan-300" },
+                    { name: "Básica ($35k/mes)", count: biData.licenseCounts.basica, color: "from-slate-500 to-slate-300" },
+                    { name: "🎁 Cortesía / Obsequio ($0/mes)", count: biData.licenseCounts.complimentary ?? biData.summary.complimentaryLicensesCount ?? 0, color: "from-pink-500 to-pink-300" }
                   ]).map((lvl: any) => {
-                    const totalLics = (biData.licenseCounts.premium + biData.licenseCounts.profesional + biData.licenseCounts.basica) || 1;
-                    const pct = (lvl.count / totalLics) * 100;
+                    const totalLics = ((biData.licenseCounts.premium || 0) + (biData.licenseCounts.profesional || 0) + (biData.licenseCounts.basica || 0) + ((biData.licenseCounts.complimentary ?? biData.summary.complimentaryLicensesCount) || 0)) || 1;
+                    const pct = ((lvl.count || 0) / totalLics) * 100;
                     return (
                       <div key={lvl.name} className="space-y-1.5">
                         <div className="flex justify-between items-center text-xs">
@@ -4449,7 +4711,8 @@ export default function DeveloperPanel({
 
       {/* PESTAÑA: RESPALDO & BACKUP GLOBAL */}
       {(activeTab as string) === "backup" && (
-        <div className="space-y-6 animate-fadeIn">
+        <div className="space-y-6 animate-fadeIn w-full">
+          {/* Fila 1: Exportar e Importar Backup */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             
             {/* Exportar Backup */}
@@ -4518,72 +4781,75 @@ export default function DeveloperPanel({
                 </div>
               </form>
             </div>
+          </div>
 
-            {/* Purga Seleccionable de Datos & Restablecimiento de Fábrica */}
-            <div className="bg-rose-950/20 border border-rose-900/40 rounded-3xl p-6 space-y-4">
-              <div className="border-b border-rose-900/40 pb-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                <div>
-                  <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                    <Trash2 className="h-4.5 w-4.5 text-rose-400" />
-                    Purga Seleccionable de Datos / Limpieza de Mantenimiento
-                  </h2>
-                  <p className="text-[11px] text-neutral-400 mt-0.5">
-                    Permite vaciar colecciones específicas (Citas, Ventas de Inventario, Clientes) o realizar un reset completo a valores de fábrica por barbería.
-                  </p>
-                </div>
-                <span className="text-[9px] bg-rose-900/40 text-rose-300 border border-rose-800/60 px-3 py-1 rounded-full font-mono font-bold uppercase">
-                  Acción Irreversible
-                </span>
+          {/* Fila 2: Purga Seleccionable de Datos & Limpieza de Mantenimiento (Tarjeta de Ancho Completo) */}
+          <div className="bg-rose-950/20 border border-rose-900/50 rounded-3xl p-6 space-y-5 w-full">
+            <div className="border-b border-rose-900/40 pb-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div>
+                <h2 className="text-sm md:text-base font-bold text-white flex items-center gap-2">
+                  <Trash2 className="h-5 w-5 text-rose-400 shrink-0" />
+                  <span>Purga Seleccionable de Datos / Limpieza de Mantenimiento</span>
+                </h2>
+                <p className="text-xs text-neutral-400 mt-1">
+                  Permite vaciar colecciones específicas (Citas, Ventas de Inventario, Clientes) o realizar un reset completo a valores de fábrica por barbería.
+                </p>
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
-                <div className="md:col-span-4 space-y-1">
-                  <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Inquilino / Barbería Target:</label>
-                  <select
-                    value={selectedPurgeTenantId}
-                    onChange={(e) => setSelectedPurgeTenantId(e.target.value)}
-                    className="w-full bg-neutral-900 border border-neutral-700 text-white font-bold text-xs px-3 py-2 rounded-xl outline-none"
-                  >
-                    {tenantsList.map(t => (
-                      <option key={t.id} value={t.id}>{t.name} ({t.id})</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="md:col-span-5 space-y-2">
-                  <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Módulos a vaciar:</label>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <label className="flex items-center gap-1.5 text-white font-bold cursor-pointer">
-                      <input type="checkbox" checked={purgeAppointmentsCheck} onChange={e => setPurgeAppointmentsCheck(e.target.checked)} className="accent-rose-500 rounded" />
-                      <span>📅 Citas</span>
-                    </label>
-                    <label className="flex items-center gap-1.5 text-white font-bold cursor-pointer">
-                      <input type="checkbox" checked={purgeSalesCheck} onChange={e => setPurgeSalesCheck(e.target.checked)} className="accent-rose-500 rounded" />
-                      <span>💰 Ventas</span>
-                    </label>
-                    <label className="flex items-center gap-1.5 text-white font-bold cursor-pointer">
-                      <input type="checkbox" checked={purgeClientsCheck} onChange={e => setPurgeClientsCheck(e.target.checked)} className="accent-rose-500 rounded" />
-                      <span>👥 Clientes</span>
-                    </label>
-                    <label className="flex items-center gap-1.5 text-rose-300 font-extrabold cursor-pointer">
-                      <input type="checkbox" checked={factoryResetCheck} onChange={e => setFactoryResetCheck(e.target.checked)} className="accent-rose-500 rounded" />
-                      <span>🔥 Reset Todo</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div className="md:col-span-3 pt-4 md:pt-0">
-                  <button
-                    onClick={() => setShowPurgeModal(true)}
-                    className="w-full py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-rose-900/30 transition-all cursor-pointer flex items-center justify-center gap-2"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    <span>Confirmar Purga</span>
-                  </button>
-                </div>
-              </div>
+              <span className="text-[10px] bg-rose-900/50 text-rose-300 border border-rose-700/60 px-3.5 py-1 rounded-full font-mono font-bold uppercase shrink-0 whitespace-nowrap">
+                Acción Irreversible
+              </span>
             </div>
 
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-end">
+              <div className="lg:col-span-4 space-y-1.5">
+                <label className="text-[11px] font-bold text-neutral-300 uppercase tracking-wider block">
+                  Inquilino / Barbería Target:
+                </label>
+                <select
+                  value={selectedPurgeTenantId}
+                  onChange={(e) => setSelectedPurgeTenantId(e.target.value)}
+                  className="w-full bg-neutral-900 border border-neutral-700 text-white font-bold text-xs px-3.5 py-2.5 rounded-xl outline-none focus:border-rose-500 transition-colors"
+                >
+                  {tenantsList.map(t => (
+                    <option key={t.id} value={t.id}>{t.name} ({t.id})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="lg:col-span-5 space-y-1.5">
+                <label className="text-[11px] font-bold text-neutral-300 uppercase tracking-wider block">
+                  Módulos a vaciar:
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-neutral-950/80 border border-rose-900/40 p-2.5 rounded-xl">
+                  <label className="flex items-center gap-1.5 text-white font-semibold text-xs cursor-pointer hover:text-rose-300 transition-colors">
+                    <input type="checkbox" checked={purgeAppointmentsCheck} onChange={e => setPurgeAppointmentsCheck(e.target.checked)} className="accent-rose-500 rounded h-4 w-4 shrink-0" />
+                    <span className="whitespace-nowrap">📅 Citas</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 text-white font-semibold text-xs cursor-pointer hover:text-rose-300 transition-colors">
+                    <input type="checkbox" checked={purgeSalesCheck} onChange={e => setPurgeSalesCheck(e.target.checked)} className="accent-rose-500 rounded h-4 w-4 shrink-0" />
+                    <span className="whitespace-nowrap">💰 Ventas</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 text-white font-semibold text-xs cursor-pointer hover:text-rose-300 transition-colors">
+                    <input type="checkbox" checked={purgeClientsCheck} onChange={e => setPurgeClientsCheck(e.target.checked)} className="accent-rose-500 rounded h-4 w-4 shrink-0" />
+                    <span className="whitespace-nowrap">👥 Clientes</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 text-rose-300 font-extrabold text-xs cursor-pointer hover:text-rose-200 transition-colors">
+                    <input type="checkbox" checked={factoryResetCheck} onChange={e => setFactoryResetCheck(e.target.checked)} className="accent-rose-500 rounded h-4 w-4 shrink-0" />
+                    <span className="whitespace-nowrap">🔥 Reset Todo</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="lg:col-span-3">
+                <button
+                  onClick={() => setShowPurgeModal(true)}
+                  className="w-full py-2.5 px-4 bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-rose-900/40 transition-all cursor-pointer flex items-center justify-center gap-2 whitespace-nowrap"
+                >
+                  <Trash2 className="h-4 w-4 shrink-0" />
+                  <span>Confirmar Purga</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -5545,6 +5811,26 @@ export default function DeveloperPanel({
                 />
               </div>
 
+              {/* Complimentary / Gift License Toggle */}
+              <div className="p-3 bg-pink-950/20 border border-pink-900/50 rounded-2xl flex items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <label htmlFor="edit-is-complimentary" className="text-xs font-bold text-pink-300 flex items-center gap-1.5 cursor-pointer">
+                    <span>🎁</span>
+                    <span>Licencia de Cortesía ($0 Cobro)</span>
+                  </label>
+                  <p className="text-[10px] text-neutral-400">
+                    Marca esta barbería como obsequio / cortesía para excluirla de las métricas de cobro y facturación mensual.
+                  </p>
+                </div>
+                <input
+                  id="edit-is-complimentary"
+                  type="checkbox"
+                  checked={customIsComplimentaryInput}
+                  onChange={(e) => setCustomIsComplimentaryInput(e.target.checked)}
+                  className="h-5 w-5 rounded accent-pink-500 cursor-pointer shrink-0"
+                />
+              </div>
+
               <div className="flex justify-end gap-2 pt-2 border-t border-elegant-border">
                 <button
                   type="button"
@@ -5574,6 +5860,19 @@ export default function DeveloperPanel({
         license={selectedContractLicense}
         pricingConfig={pricingConfig}
         formatPrice={formatPrice}
+      />
+
+      {/* Developer Barber Management & Negotiated Quota Modal */}
+      <DeveloperBarberManagerModal
+        isOpen={Boolean(selectedBarberTenant)}
+        onClose={() => setSelectedBarberTenant(null)}
+        tenant={selectedBarberTenant}
+        triggerToast={triggerToast}
+        addLog={addLog}
+        onTenantUpdated={() => {
+          fetchTenants();
+          fetchLicenses(true);
+        }}
       />
 
     </div>

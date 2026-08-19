@@ -152,6 +152,8 @@ let tenantData: Record<string, TenantData> = {
       intervalMinutes: 30,
       licenseType: "premium",
       activeLicenseKey: "LIC-PREM-V98X2-2026",
+      isComplimentary: true,
+      billingExempt: true,
       accentColor: "gold",
       textColor: "#FFFFFF",
       backgroundColor: "#060A13",
@@ -737,7 +739,7 @@ app.post("/api/setup/complete", (req, res) => {
 
 // --- Developer Tenants & Administrators System ---
 let tenants: any[] = [
-  { id: "bella-barba", name: "Barberia Demo", licenseType: "premium", activeLicenseKey: "LIC-PREM-V98X2-2026" }
+  { id: "bella-barba", name: "Barberia Demo", licenseType: "premium", activeLicenseKey: "LIC-PREM-V98X2-2026", isComplimentary: true, billingExempt: true }
 ];
 
 let salonAdmins: any[] = [
@@ -747,9 +749,19 @@ let salonAdmins: any[] = [
 app.get("/api/developer/tenants", (req, res) => {
   const tenantsWithConfig = tenants.map(t => {
     const tenant = tenantData[t.id] || tenantData["bella-barba"];
+    const isComplimentary = t.isComplimentary !== undefined 
+      ? t.isComplimentary 
+      : (tenant?.config?.isComplimentary !== undefined ? tenant.config.isComplimentary : (t.id === "bella-barba"));
+
     return {
       ...t,
-      config: tenant.config || null,
+      isComplimentary: Boolean(isComplimentary),
+      billingExempt: Boolean(isComplimentary),
+      config: tenant?.config ? {
+        ...tenant.config,
+        isComplimentary: Boolean(isComplimentary),
+        billingExempt: Boolean(isComplimentary)
+      } : null,
       barbers: tenant.barbers || [],
       services: tenant.services || [],
       memberships: getTenantMemberships(tenant)
@@ -758,9 +770,61 @@ app.get("/api/developer/tenants", (req, res) => {
   res.json({ tenants: tenantsWithConfig });
 });
 
+// Endpoint to toggle or change complimentary (Cortesía / Obsequio $0) status for any tenant
+app.put("/api/developer/tenants/:id/complimentary", (req, res) => {
+  const { id } = req.params;
+  const { isComplimentary } = req.body;
+
+  const tenant = tenants.find(t => t.id === id);
+  if (!tenant) {
+    return res.status(404).json({ error: "Inquilino no encontrado." });
+  }
+
+  const complimentaryValue = Boolean(isComplimentary);
+  tenant.isComplimentary = complimentaryValue;
+  tenant.billingExempt = complimentaryValue;
+
+  // Update tenant configuration in tenantData
+  if (tenantData[id]) {
+    tenantData[id].config.isComplimentary = complimentaryValue;
+    tenantData[id].config.billingExempt = complimentaryValue;
+    broadcastChange("config_update", tenantData[id].config, id);
+  }
+
+  // Also update corresponding active license if present
+  if (tenant.activeLicenseKey) {
+    const lic = generatedLicenses.find(l => l.key.toUpperCase() === tenant.activeLicenseKey.toUpperCase());
+    if (lic) {
+      lic.isComplimentary = complimentaryValue;
+      lic.billingExempt = complimentaryValue;
+    }
+  }
+
+  // Also update any generatedLicenses that match this tenant
+  generatedLicenses.forEach(l => {
+    if (l.tenantId === id || l.salonName === tenant.name) {
+      l.isComplimentary = complimentaryValue;
+      l.billingExempt = complimentaryValue;
+    }
+  });
+
+  saveTenantToFirestore(id);
+  saveGlobalsToFirestore();
+
+  res.json({
+    message: complimentaryValue 
+      ? `La barbería '${tenant.name}' ha sido configurada como Licencia de Cortesía ($0 Facturación).`
+      : `La barbería '${tenant.name}' ha sido configurada como Licencia Regular de Pago.`,
+    isComplimentary: complimentaryValue,
+    billingExempt: complimentaryValue,
+    tenant,
+    currentConfig: tenantData[id]?.config
+  });
+});
+
 app.put("/api/developer/tenants/:id/license", (req, res) => {
   const { id } = req.params;
-  const { licenseType } = req.body;
+  const { licenseType, isComplimentary } = req.body;
   
   if (!licenseType || !["basica", "profesional", "premium"].includes(licenseType)) {
     return res.status(400).json({ error: "Tipo de licencia no válido." });
@@ -772,18 +836,30 @@ app.put("/api/developer/tenants/:id/license", (req, res) => {
   }
 
   tenant.licenseType = licenseType;
+  if (isComplimentary !== undefined) {
+    tenant.isComplimentary = Boolean(isComplimentary);
+    tenant.billingExempt = Boolean(isComplimentary);
+  }
 
   // Also update corresponding license key status/type if matches
   if (tenant.activeLicenseKey) {
     const lic = generatedLicenses.find(l => l.key === tenant.activeLicenseKey);
     if (lic) {
       lic.licenseType = licenseType;
+      if (isComplimentary !== undefined) {
+        lic.isComplimentary = Boolean(isComplimentary);
+        lic.billingExempt = Boolean(isComplimentary);
+      }
     }
   }
 
   // Update in tenantData if exists
   if (tenantData[id]) {
     tenantData[id].config.licenseType = licenseType;
+    if (isComplimentary !== undefined) {
+      tenantData[id].config.isComplimentary = Boolean(isComplimentary);
+      tenantData[id].config.billingExempt = Boolean(isComplimentary);
+    }
     broadcastChange("config_update", tenantData[id].config, id);
   }
 
@@ -1012,6 +1088,17 @@ app.post("/api/developer/admins", (req, res) => {
     return res.status(409).json({ error: "El nombre de usuario del administrador ya existe." });
   }
 
+  // Check admin license limit (Plan Básica allows only 1 administrator)
+  const targetLicType = targetTenant.config?.licenseType || "basica";
+  if (targetLicType === "basica") {
+    const existingSalonAdmins = salonAdmins.filter(a => a.salonId === salonId);
+    if (existingSalonAdmins.length >= 1) {
+      return res.status(403).json({
+        error: "Límite de administradores alcanzado: El Plan Básica solo permite 1 usuario Administrador. Actualiza al Plan Profesional o Premium Enterprise para habilitar acceso multiusuario administrativo."
+      });
+    }
+  }
+
   const newAdmin = {
     id: "adm_" + Date.now().toString(),
     name,
@@ -1022,6 +1109,224 @@ app.post("/api/developer/admins", (req, res) => {
 
   salonAdmins.push(newAdmin);
   res.status(201).json({ message: "Administrador de barbería creado con éxito", admin: newAdmin });
+});
+
+// --- Developer Barber Management & Negotiated Quota Endpoints ---
+app.get("/api/developer/tenants/:id/barbers", (req, res) => {
+  const { id } = req.params;
+  const tenant = tenantData[id] || tenantData["bella-barba"];
+  if (!tenant) {
+    return res.status(404).json({ error: "Inquilino no encontrado." });
+  }
+
+  const licType = (tenant.config?.licenseType || "basica") as keyof typeof saasPricingPlans;
+  const plan = saasPricingPlans[licType] || saasPricingPlans.basica;
+  const defaultMaxBarbers = plan.maxBarbers || (licType === "basica" ? 2 : licType === "profesional" ? 5 : 99);
+  const customMaxBarbers = tenant.config?.customMaxBarbers ? Number(tenant.config.customMaxBarbers) : null;
+  const effectiveMaxBarbers = customMaxBarbers || defaultMaxBarbers;
+  const activeCount = (tenant.barbers || []).filter(b => b.isActive !== false).length;
+
+  res.json({
+    tenantId: id,
+    salonName: tenant.config?.name || id,
+    licenseType: licType,
+    planName: plan.name || licType,
+    defaultMaxBarbers,
+    customMaxBarbers,
+    effectiveMaxBarbers,
+    activeCount,
+    isCustomQuota: Boolean(customMaxBarbers && customMaxBarbers !== defaultMaxBarbers),
+    barbers: tenant.barbers || []
+  });
+});
+
+app.put("/api/developer/tenants/:id/custom-barber-limit", (req, res) => {
+  const { id } = req.params;
+  const { customMaxBarbers, reason } = req.body;
+  const tenant = tenantData[id];
+  if (!tenant) {
+    return res.status(404).json({ error: "Inquilino no encontrado." });
+  }
+
+  if (customMaxBarbers === null || customMaxBarbers === undefined || customMaxBarbers === "") {
+    delete tenant.config.customMaxBarbers;
+  } else {
+    const val = Number(customMaxBarbers);
+    if (isNaN(val) || val < 1) {
+      return res.status(400).json({ error: "El cupo personalizado debe ser un número entero mayor a 0." });
+    }
+    tenant.config.customMaxBarbers = val;
+  }
+
+  // Update in tenants list as well
+  const tObj = tenants.find(t => t.id === id);
+  if (tObj) {
+    if (!tObj.config) tObj.config = {};
+    if (tenant.config.customMaxBarbers) {
+      tObj.config.customMaxBarbers = tenant.config.customMaxBarbers;
+    } else {
+      delete tObj.config.customMaxBarbers;
+    }
+  }
+
+  // Save to Firestore
+  saveTenantToFirestore(id);
+  saveGlobalsToFirestore();
+
+  broadcastChange("config_update", tenant.config, id);
+  broadcastChange("barbers_update", tenant.barbers, id);
+
+  res.json({
+    success: true,
+    message: tenant.config.customMaxBarbers 
+      ? `Cupo especial negociado configurado en ${tenant.config.customMaxBarbers} barberos para '${tenant.config.name}'`
+      : `Cupo de barberos restablecido a los valores por defecto del plan para '${tenant.config.name}'`,
+    customMaxBarbers: tenant.config.customMaxBarbers || null
+  });
+});
+
+app.post("/api/developer/tenants/:id/barbers", (req, res) => {
+  const { id } = req.params;
+  const tenant = tenantData[id] || tenantData["bella-barba"];
+  if (!tenant) {
+    return res.status(404).json({ error: "Inquilino no encontrado." });
+  }
+
+  const { name, username, password, specialties, avatarUrl, photoUrl, commissionPercent, autoExpandQuota } = req.body;
+  if (!name || !username || !password) {
+    return res.status(400).json({ error: "Nombre, usuario y contraseña son requeridos." });
+  }
+
+  const exists = (tenant.barbers || []).some(b => b.username.toLowerCase() === username.toLowerCase()) || username.toLowerCase() === "admin";
+  if (exists) {
+    return res.status(409).json({ error: "El nombre de usuario ya existe en esta barbería." });
+  }
+
+  const licType = (tenant.config?.licenseType || "basica") as keyof typeof saasPricingPlans;
+  const plan = saasPricingPlans[licType] || saasPricingPlans.basica;
+  const defaultMax = plan.maxBarbers || (licType === "basica" ? 2 : licType === "profesional" ? 5 : 99);
+  const currentCustom = tenant.config?.customMaxBarbers ? Number(tenant.config.customMaxBarbers) : null;
+  const currentMaxAllowed = currentCustom || defaultMax;
+  const activeCount = (tenant.barbers || []).filter(b => b.isActive !== false).length;
+
+  // If the new barber exceeds the current limit, automatically expand the negotiated quota if requested (or by default in Dev Panel)
+  let quotaExpanded = false;
+  if (activeCount + 1 > currentMaxAllowed) {
+    const newNegotiatedQuota = activeCount + 1;
+    tenant.config.customMaxBarbers = newNegotiatedQuota;
+    quotaExpanded = true;
+
+    const tObj = tenants.find(t => t.id === id);
+    if (tObj) {
+      if (!tObj.config) tObj.config = {};
+      tObj.config.customMaxBarbers = newNegotiatedQuota;
+    }
+  }
+
+  const newBarber: Barber = {
+    id: "b_dev_" + Date.now().toString(),
+    name,
+    username,
+    password,
+    isActive: true,
+    specialties: specialties || ["cabello"],
+    avatarUrl: avatarUrl || photoUrl || "",
+    photoUrl: photoUrl || avatarUrl || "",
+    commissionPercent: commissionPercent !== undefined ? Number(commissionPercent) : 50
+  };
+
+  if (!tenant.barbers) tenant.barbers = [];
+  tenant.barbers.push(newBarber);
+
+  // Persist directly to Firestore
+  saveTenantToFirestore(id);
+  saveGlobalsToFirestore();
+
+  broadcastChange("barbers_update", tenant.barbers, id);
+  broadcastChange("config_update", tenant.config, id);
+
+  res.status(201).json({
+    success: true,
+    message: quotaExpanded
+      ? `Barbero '${name}' creado exitosamente. Se expandió automáticamente el cupo negociado a ${tenant.config.customMaxBarbers} barberos.`
+      : `Barbero '${name}' creado exitosamente desde el Panel de Desarrollo.`,
+    barber: newBarber,
+    customMaxBarbers: tenant.config.customMaxBarbers || null,
+    quotaExpanded
+  });
+});
+
+app.put("/api/developer/tenants/:tenantId/barbers/:barberId", (req, res) => {
+  const { tenantId, barberId } = req.params;
+  const tenant = tenantData[tenantId] || tenantData["bella-barba"];
+  if (!tenant) {
+    return res.status(404).json({ error: "Inquilino no encontrado." });
+  }
+
+  const index = (tenant.barbers || []).findIndex(b => b.id === barberId);
+  if (index === -1) {
+    return res.status(404).json({ error: "Barbero no encontrado en este inquilino." });
+  }
+
+  const { name, username, password, isActive, specialties, commissionPercent, avatarUrl, photoUrl } = req.body;
+
+  if (username && username.toLowerCase() !== tenant.barbers[index].username.toLowerCase()) {
+    const exists = tenant.barbers.some(b => b.username.toLowerCase() === username.toLowerCase()) || username.toLowerCase() === "admin";
+    if (exists) {
+      return res.status(409).json({ error: "El nombre de usuario ya está en uso." });
+    }
+  }
+
+  // If reactivating and it would exceed limit, auto-expand customMaxBarbers
+  if (isActive === true && tenant.barbers[index].isActive === false) {
+    const licType = (tenant.config?.licenseType || "basica") as keyof typeof saasPricingPlans;
+    const plan = saasPricingPlans[licType] || saasPricingPlans.basica;
+    const defaultMax = plan.maxBarbers || (licType === "basica" ? 2 : licType === "profesional" ? 5 : 99);
+    const currentMax = tenant.config?.customMaxBarbers ? Number(tenant.config.customMaxBarbers) : defaultMax;
+    const activeCount = (tenant.barbers || []).filter(b => b.isActive !== false).length;
+
+    if (activeCount + 1 > currentMax) {
+      tenant.config.customMaxBarbers = activeCount + 1;
+    }
+  }
+
+  tenant.barbers[index] = {
+    ...tenant.barbers[index],
+    name: name || tenant.barbers[index].name,
+    username: username || tenant.barbers[index].username,
+    password: password || tenant.barbers[index].password,
+    isActive: isActive !== undefined ? Boolean(isActive) : tenant.barbers[index].isActive,
+    specialties: specialties || tenant.barbers[index].specialties,
+    avatarUrl: avatarUrl !== undefined ? avatarUrl : (photoUrl !== undefined ? photoUrl : tenant.barbers[index].avatarUrl),
+    photoUrl: photoUrl !== undefined ? photoUrl : (avatarUrl !== undefined ? avatarUrl : tenant.barbers[index].photoUrl),
+    commissionPercent: commissionPercent !== undefined ? Number(commissionPercent) : tenant.barbers[index].commissionPercent
+  };
+
+  saveTenantToFirestore(tenantId);
+  saveGlobalsToFirestore();
+
+  broadcastChange("barbers_update", tenant.barbers, tenantId);
+  res.json({ success: true, message: "Barbero actualizado con éxito.", barber: tenant.barbers[index] });
+});
+
+app.delete("/api/developer/tenants/:tenantId/barbers/:barberId", (req, res) => {
+  const { tenantId, barberId } = req.params;
+  const tenant = tenantData[tenantId] || tenantData["bella-barba"];
+  if (!tenant) {
+    return res.status(404).json({ error: "Inquilino no encontrado." });
+  }
+
+  const index = (tenant.barbers || []).findIndex(b => b.id === barberId);
+  if (index === -1) {
+    return res.status(404).json({ error: "Barbero no encontrado." });
+  }
+
+  const deleted = tenant.barbers.splice(index, 1)[0];
+  saveTenantToFirestore(tenantId);
+  saveGlobalsToFirestore();
+
+  broadcastChange("barbers_update", tenant.barbers, tenantId);
+  res.json({ success: true, message: `Barbero '${deleted.name}' eliminado con éxito.`, deleted });
 });
 
 // --- Support Technical Tickets Console (Helpdesk) ---
@@ -1197,9 +1502,14 @@ async function loadFromFirestore() {
         tenants = tenants.map((t: any) => {
           if (t && t.id === "bella-barba") {
             hasBellaBarba = true;
-            if (!t.name) {
+            if (!t.name || t.isComplimentary === undefined) {
               needsGlobalsUpdate = true;
-              return { ...t, name: "Barberia Demo" };
+              return { 
+                ...t, 
+                name: t.name || "Barberia Demo",
+                isComplimentary: t.isComplimentary !== undefined ? t.isComplimentary : true,
+                billingExempt: t.billingExempt !== undefined ? t.billingExempt : true
+              };
             }
           }
           return t;
@@ -1210,12 +1520,21 @@ async function loadFromFirestore() {
             id: "bella-barba",
             name: "Barberia Demo",
             licenseType: "premium",
-            activeLicenseKey: "LIC-PREM-V98X2-2026"
+            activeLicenseKey: "LIC-PREM-V98X2-2026",
+            isComplimentary: true,
+            billingExempt: true
           });
           needsGlobalsUpdate = true;
         }
       } else {
-        tenants = [{ id: "bella-barba", name: "Barberia Demo", licenseType: "premium", activeLicenseKey: "LIC-PREM-V98X2-2026" }];
+        tenants = [{ 
+          id: "bella-barba", 
+          name: "Barberia Demo", 
+          licenseType: "premium", 
+          activeLicenseKey: "LIC-PREM-V98X2-2026",
+          isComplimentary: true,
+          billingExempt: true
+        }];
         needsGlobalsUpdate = true;
       }
 
@@ -1240,11 +1559,17 @@ async function loadFromFirestore() {
         generatedLicenses = data.generatedLicenses;
         let hasDemoLicense = false;
         generatedLicenses = generatedLicenses.map((l: any) => {
-          if (l && l.key === "LIC-PREM-V98X2-2026") {
+          if (l && (l.key === "LIC-PREM-V98X2-2026" || l.tenantId === "bella-barba")) {
             hasDemoLicense = true;
-            if (!l.salonName) {
+            if (!l.salonName || l.isComplimentary === undefined) {
               needsGlobalsUpdate = true;
-              return { ...l, salonName: "Barberia Demo" };
+              return { 
+                ...l, 
+                salonName: l.salonName || "Barberia Demo",
+                tenantId: l.tenantId || "bella-barba",
+                isComplimentary: l.isComplimentary !== undefined ? l.isComplimentary : true,
+                billingExempt: l.billingExempt !== undefined ? l.billingExempt : true
+              };
             }
           }
           return l;
@@ -1254,7 +1579,10 @@ async function loadFromFirestore() {
           generatedLicenses.unshift({
             key: "LIC-PREM-V98X2-2026",
             salonName: "Barberia Demo",
+            tenantId: "bella-barba",
             licenseType: "premium",
+            isComplimentary: true,
+            billingExempt: true,
             createdAt: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(),
             activatedAt: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(),
             status: "active"
@@ -1262,7 +1590,17 @@ async function loadFromFirestore() {
           needsGlobalsUpdate = true;
         }
       } else {
-        generatedLicenses = [{ key: "LIC-PREM-V98X2-2026", salonName: "Barberia Demo", licenseType: "premium", createdAt: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(), activatedAt: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(), status: "active" }];
+        generatedLicenses = [{ 
+          key: "LIC-PREM-V98X2-2026", 
+          salonName: "Barberia Demo", 
+          tenantId: "bella-barba",
+          licenseType: "premium", 
+          isComplimentary: true,
+          billingExempt: true,
+          createdAt: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(), 
+          activatedAt: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(), 
+          status: "active" 
+        }];
         needsGlobalsUpdate = true;
       }
 
@@ -1295,6 +1633,12 @@ async function loadFromFirestore() {
           const parsed = fromFirestoreValue({ mapValue: rawTenant });
           if (parsed && typeof parsed === "object") {
             tenantData[t.id] = parsed;
+            if (!tenantData[t.id].config) tenantData[t.id].config = {} as any;
+            if (t.id === "bella-barba" && tenantData[t.id].config.isComplimentary === undefined) {
+              tenantData[t.id].config.isComplimentary = true;
+              tenantData[t.id].config.billingExempt = true;
+              await saveTenantToFirestore(t.id);
+            }
             console.log(`[Firebase] Inquilino '${t.id}' (${parsed.config?.name || t.name}) cargado desde ${TENANTS_COLLECTION}.`);
           }
         } else if (tenantRes.status === 404) {
@@ -1432,6 +1776,7 @@ app.put("/api/developer/tickets/:id", (req, res) => {
 app.get("/api/developer/analytics", (req, res) => {
   const tenantKeys = Object.keys(tenantData);
   let activeCount = 0;
+  let complimentaryCount = 0;
   let pendingCount = 0;
   let expiredCount = 0;
 
@@ -1448,24 +1793,40 @@ app.get("/api/developer/analytics", (req, res) => {
   tenantKeys.forEach(tId => {
     const data = tenantData[tId];
     const config: any = data.config || {};
-    const licenseType = config.licenseType || "basica";
+    const tenantMeta = tenants.find(t => t.id === tId);
+    const licenseType = config.licenseType || tenantMeta?.licenseType || "basica";
     
-    let licenseCost = saasPricingPlans[licenseType as keyof typeof saasPricingPlans]?.price || saasPricingPlans.basica.price;
+    // Check if complimentary / billing exempt
+    const isComplimentary = Boolean(
+      config.isComplimentary || 
+      config.billingExempt || 
+      tenantMeta?.isComplimentary || 
+      tenantMeta?.billingExempt || 
+      (tId === "bella-barba" && config.isComplimentary !== false && tenantMeta?.isComplimentary !== false)
+    );
+    
+    let licenseCost = isComplimentary ? 0 : (saasPricingPlans[licenseType as keyof typeof saasPricingPlans]?.price || saasPricingPlans.basica.price);
     
     // Count active licenses
     activeCount++;
-    if (licenseType === "premium") licenseCounts.premium++;
-    else if (licenseType === "profesional") licenseCounts.profesional++;
-    else licenseCounts.basica++;
+    if (isComplimentary) {
+      complimentaryCount++;
+    } else {
+      if (licenseType === "premium") licenseCounts.premium++;
+      else if (licenseType === "profesional") licenseCounts.profesional++;
+      else licenseCounts.basica++;
+    }
 
     salonMetrics.push({
       id: tId,
-      name: config.name || tId,
+      name: config.name || tenantMeta?.name || tId,
       licenseType: licenseType,
-      activeLicenseKey: config.activeLicenseKey || "N/A",
+      activeLicenseKey: config.activeLicenseKey || tenantMeta?.activeLicenseKey || "N/A",
       licenseSubscriptionRevenue: licenseCost,
+      isComplimentary: isComplimentary,
+      billingExempt: isComplimentary,
       status: "activo",
-      activationDate: new Date(Date.now() - 15 * 24 * 3600 * 1000).toLocaleDateString() // Platform activation simulation
+      activationDate: config.activationDate || new Date(Date.now() - 15 * 24 * 3600 * 1000).toLocaleDateString()
     });
   });
 
@@ -1478,15 +1839,18 @@ app.get("/api/developer/analytics", (req, res) => {
     }
   });
 
-  // Calculate MRR (Monthly Recurring Revenue)
-  const mrr = (licenseCounts.premium * saasPricingPlans.premium.price) + (licenseCounts.profesional * saasPricingPlans.profesional.price) + (licenseCounts.basica * saasPricingPlans.basica.price);
-  const arpu = mrr / (tenantKeys.length || 1);
+  // Calculate MRR (Monthly Recurring Revenue) - Excludes complimentary / gift licenses ($0)
+  const mrr = (licenseCounts.premium * saasPricingPlans.premium.price) + 
+              (licenseCounts.profesional * saasPricingPlans.profesional.price) + 
+              (licenseCounts.basica * saasPricingPlans.basica.price);
+  const paidSalonsCount = activeCount - complimentaryCount;
+  const arpu = paidSalonsCount > 0 ? (mrr / paidSalonsCount) : 0;
 
-  // Growth Trend (MRR Progression)
+  // Real Growth Trend (MRR Progression)
   const growthTrend = [
-    { period: "Abril", mrr: 120000, activeSalons: 1 },
-    { period: "Mayo", mrr: 180000, activeSalons: 2 },
-    { period: "Junio", mrr: 210000, activeSalons: 3 },
+    { period: "Abril", mrr: 0, activeSalons: 1 },
+    { period: "Mayo", mrr: 0, activeSalons: 1 },
+    { period: "Junio", mrr: 0, activeSalons: 1 },
     { period: "Julio (Actual)", mrr: mrr, activeSalons: tenantKeys.length }
   ];
 
@@ -1495,6 +1859,8 @@ app.get("/api/developer/analytics", (req, res) => {
       totalRevenue: mrr, // SaaS MRR is the developer revenue
       licenseRevenue: mrr,
       activeLicensesCount: activeCount,
+      paidLicensesCount: paidSalonsCount,
+      complimentaryLicensesCount: complimentaryCount,
       pendingLicensesCount: pendingCount,
       expiredLicensesCount: expiredCount,
       totalLicensesCount: activeCount + pendingCount + expiredCount,
@@ -1509,7 +1875,10 @@ app.get("/api/developer/analytics", (req, res) => {
       }
     },
     salonMetrics,
-    licenseCounts,
+    licenseCounts: {
+      ...licenseCounts,
+      complimentary: complimentaryCount
+    },
     growthTrend
   });
 });
@@ -1542,7 +1911,10 @@ let generatedLicenses: any[] = [
   {
     key: "LIC-PREM-V98X2-2026",
     salonName: "Barberia Demo",
+    tenantId: "bella-barba",
     licenseType: "premium",
+    isComplimentary: true,
+    billingExempt: true,
     createdAt: nowISO, // Fecha de activación
     expirationDate: defaultExpISO, // Fecha de inactivación (1 año)
     durationMonths: 12,
@@ -1610,6 +1982,8 @@ const createTenant = (
     closeTime?: string;
     initialBarbersCount?: number;
     customAdminPassword?: string;
+    customMaxBarbers?: number;
+    isComplimentary?: boolean;
   } = {}
 ) => {
   const isDefaultTenant = id === "bella-barba";
@@ -1619,6 +1993,7 @@ const createTenant = (
   const actDate = activationDate || new Date().toISOString().split("T")[0];
   const expDate = expirationDate || calculateExpirationDate(actDate, 12);
   const email = extraDetails.ownerEmail || `contacto@${id}.com`;
+  const isComp = Boolean(extraDetails.isComplimentary);
 
   tenantData[id] = {
     config: {
@@ -1631,6 +2006,8 @@ const createTenant = (
       activeLicenseKey: licenseKey,
       activationDate: actDate,
       expirationDate: expDate,
+      isComplimentary: isComp,
+      billingExempt: isComp,
       ownerName: extraDetails.ownerName || "",
       ownerEmail: email,
       phone: extraDetails.phone || "",
@@ -1645,6 +2022,7 @@ const createTenant = (
       subCardColor: "#1A1A1A",
       borderColor: "#262626",
       tagline: extraDetails.tagline || "",
+      customMaxBarbers: extraDetails.customMaxBarbers ? Number(extraDetails.customMaxBarbers) : undefined,
     },
     // For new tenants, everything is completely blank so the owner configures all items from scratch with their client
     services: isDefaultTenant && tenantData["bella-barba"] ? tenantData["bella-barba"].services : [],
@@ -1690,12 +2068,16 @@ app.post("/api/licenses/generate", (req, res) => {
     closeTime,
     initialBarbersCount,
     customAdminPassword,
-    customExpirationDate
+    customExpirationDate,
+    customMaxBarbers,
+    isComplimentary
   } = req.body;
 
   if (!salonName || !licenseType) {
     return res.status(400).json({ error: "Nombre del salón y tipo de licencia requeridos." });
   }
+
+  const isComp = Boolean(isComplimentary);
 
   // Generate a high-fidelity cryptographic-style key
   const randNum = Math.floor(10000 + Math.random() * 90000);
@@ -1714,6 +2096,8 @@ app.post("/api/licenses/generate", (req, res) => {
     key,
     salonName,
     licenseType,
+    isComplimentary: isComp,
+    billingExempt: isComp,
     createdAt: createdAtISO, // Fecha de activación
     expirationDate: expirationDate, // Fecha de inactivación
     durationMonths: months,
@@ -1735,7 +2119,9 @@ app.post("/api/licenses/generate", (req, res) => {
     id: newTenantId,
     name: salonName,
     licenseType: licenseType,
-    activeLicenseKey: key
+    activeLicenseKey: key,
+    isComplimentary: isComp,
+    billingExempt: isComp
   });
 
   // Register in memory store
@@ -1757,7 +2143,9 @@ app.post("/api/licenses/generate", (req, res) => {
       openTime: openTime || "08:00",
       closeTime: closeTime || "20:00",
       initialBarbersCount: initialBarbersCount ? Number(initialBarbersCount) : 2,
-      customAdminPassword: customAdminPassword || "admin"
+      customAdminPassword: customAdminPassword || "admin",
+      customMaxBarbers: customMaxBarbers ? Number(customMaxBarbers) : undefined,
+      isComplimentary: isComp
     }
   );
 
@@ -1944,9 +2332,9 @@ app.post("/api/licenses/send-reminder", (req, res) => {
   });
 });
 
-// Endpoint to manually edit expiration date or contact email
+// Endpoint to manually edit expiration date, contact email or complimentary status
 app.put("/api/licenses/update-dates", (req, res) => {
-  const { key, expirationDate, ownerEmail } = req.body;
+  const { key, expirationDate, ownerEmail, isComplimentary } = req.body;
   if (!key) {
     return res.status(400).json({ error: "Clave de licencia requerida." });
   }
@@ -1957,22 +2345,40 @@ app.put("/api/licenses/update-dates", (req, res) => {
   }
 
   if (expirationDate) lic.expirationDate = expirationDate;
-  if (ownerEmail) lic.ownerEmail = ownerEmail;
+  if (ownerEmail !== undefined) lic.ownerEmail = ownerEmail;
+  if (isComplimentary !== undefined) {
+    lic.isComplimentary = Boolean(isComplimentary);
+    lic.billingExempt = Boolean(isComplimentary);
+  }
 
   // Sync to active tenant
   for (const tenantId of Object.keys(tenantData)) {
     const tenant = tenantData[tenantId];
     if (tenant.config.activeLicenseKey === key) {
       if (expirationDate) tenant.config.expirationDate = expirationDate;
-      if (ownerEmail) tenant.config.ownerEmail = ownerEmail;
+      if (ownerEmail !== undefined) tenant.config.ownerEmail = ownerEmail;
+      if (isComplimentary !== undefined) {
+        tenant.config.isComplimentary = Boolean(isComplimentary);
+        tenant.config.billingExempt = Boolean(isComplimentary);
+      }
       saveTenantToFirestore(tenantId);
       broadcastChange("config_update", tenant.config, tenantId);
     }
   }
 
+  // Sync to tenants array
+  tenants.forEach(t => {
+    if (t.activeLicenseKey === key || t.id === lic.tenantId) {
+      if (isComplimentary !== undefined) {
+        t.isComplimentary = Boolean(isComplimentary);
+        t.billingExempt = Boolean(isComplimentary);
+      }
+    }
+  });
+
   saveGlobalsToFirestore();
 
-  res.json({ message: "Fechas de licencia actualizadas correctamente", license: lic });
+  res.json({ message: "Licencia actualizada correctamente", license: lic });
 });
 
 app.post("/api/licenses/revoke", (req, res) => {
@@ -2181,7 +2587,9 @@ app.get("/api/developer/health", (req, res) => {
     },
     tenantsCount: tenants.length,
     activeLicensesCount: generatedLicenses.filter(l => l.status !== "expired").length,
-    firestoreSyncStatus: db ? "CONNECTED_CLOUD_FIRESTORE" : "LOCAL_IN_MEMORY_ONLY",
+    firestoreSyncStatus: firestoreBaseUrl && firebaseConfig ? "CONNECTED_CLOUD_FIRESTORE" : "LOCAL_IN_MEMORY_ONLY",
+    firestoreEnvironment: isProduction ? "PRODUCCIÓN" : "DESARROLLO",
+    firestoreCollections: { system: SYSTEM_COLLECTION, tenants: TENANTS_COLLECTION },
     webSocketsActiveClients: 1,
     timestamp: new Date().toISOString()
   });
@@ -3066,6 +3474,21 @@ app.post("/api/barbers", (req, res) => {
     return res.status(409).json({ error: "El nombre de usuario ya está en uso" });
   }
 
+  // Check license limit for active barbers (including custom negotiated quotas)
+  const licType = (tenant.config?.licenseType || "basica") as keyof typeof saasPricingPlans;
+  const plan = saasPricingPlans[licType] || saasPricingPlans.basica;
+  const defaultMax = plan.maxBarbers || (licType === "basica" ? 2 : licType === "profesional" ? 5 : 99);
+  const customMax = tenant.config?.customMaxBarbers ? Number(tenant.config.customMaxBarbers) : undefined;
+  const maxAllowed = customMax || defaultMax;
+  const activeCount = (tenant.barbers || []).filter(b => b.isActive !== false).length;
+
+  if (activeCount >= maxAllowed) {
+    const quotaTypeMsg = customMax ? `(Cupo negociado: ${customMax} barberos)` : `(Plan ${plan.name || licType}: ${defaultMax} barberos)`;
+    return res.status(403).json({
+      error: `Límite de barberos alcanzado: Tu salón permite hasta ${maxAllowed} barberos activos ${quotaTypeMsg}. Para registrar más profesionales, contacta al soporte técnico o actualiza tu suscripción en el menú de Licencias.`
+    });
+  }
+
   const newBarber: Barber = {
     id: "b_" + Date.now().toString(),
     name,
@@ -3097,6 +3520,22 @@ app.put("/api/barbers/:id", (req, res) => {
     const exists = tenant.barbers.some(b => b.username.toLowerCase() === username.toLowerCase()) || username.toLowerCase() === "admin";
     if (exists) {
       return res.status(409).json({ error: "El nombre de usuario ya está en uso" });
+    }
+  }
+
+  // If attempting to reactivate an inactive barber, check license limit (including custom negotiated quotas)
+  if (isActive === true && tenant.barbers[index].isActive === false) {
+    const licType = (tenant.config?.licenseType || "basica") as keyof typeof saasPricingPlans;
+    const plan = saasPricingPlans[licType] || saasPricingPlans.basica;
+    const defaultMax = plan.maxBarbers || (licType === "basica" ? 2 : licType === "profesional" ? 5 : 99);
+    const customMax = tenant.config?.customMaxBarbers ? Number(tenant.config.customMaxBarbers) : undefined;
+    const maxAllowed = customMax || defaultMax;
+    const activeCount = (tenant.barbers || []).filter(b => b.isActive !== false).length;
+
+    if (activeCount >= maxAllowed) {
+      return res.status(403).json({
+        error: `Límite de barberos alcanzado: No puedes reactivar a este barbero porque el cupo configurado para tu salón es de ${maxAllowed} barberos activos.`
+      });
     }
   }
 
