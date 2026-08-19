@@ -1,8 +1,6 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
-import admin from "firebase-admin";
-import { getFirestore } from "firebase-admin/firestore";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { Appointment, Service, SalonConfig, Barber, MembershipPlan, ClientAccount, DailyClosure, CatalogStyle } from "./src/types";
@@ -14,21 +12,69 @@ const PORT = 3000;
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-// --- FIREBASE FIRESTORE PERSISTENCE SETUP ---
-let db: any = null;
+// --- FIREBASE FIRESTORE REST PERSISTENCE SETUP ---
+interface FirebaseAppConfig {
+  projectId: string;
+  apiKey: string;
+  firestoreDatabaseId: string;
+}
+
+let firebaseConfig: FirebaseAppConfig | null = null;
+let firestoreBaseUrl = "";
+let isFirestoreLoaded = false;
+
 try {
   if (fs.existsSync("./firebase-applet-config.json")) {
-    const firebaseConfig = JSON.parse(fs.readFileSync("./firebase-applet-config.json", "utf-8"));
-    admin.initializeApp({
-      projectId: firebaseConfig.projectId,
-    });
-    db = getFirestore(firebaseConfig.firestoreDatabaseId);
-    console.log("[Firebase] Inicializado con éxito. Base de datos ID:", firebaseConfig.firestoreDatabaseId);
+    firebaseConfig = JSON.parse(fs.readFileSync("./firebase-applet-config.json", "utf-8"));
+    if (firebaseConfig && firebaseConfig.projectId && firebaseConfig.firestoreDatabaseId) {
+      firestoreBaseUrl = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId}/documents`;
+      console.log("[Firebase] Conectado a Firestore. Base de datos ID:", firebaseConfig.firestoreDatabaseId);
+    }
   } else {
     console.warn("[Firebase] No se encontró el archivo firebase-applet-config.json");
   }
-} catch (error) {
-  console.error("[Firebase] Error al inicializar firebase-admin:", error);
+} catch (error: any) {
+  console.error("[Firebase] Error al leer configuración de Firebase:", error?.message);
+}
+
+// Helpers to serialize and deserialize between JS objects and Firestore REST API documents
+function toFirestoreValue(val: any): any {
+  if (val === null || val === undefined) return { nullValue: null };
+  if (typeof val === "boolean") return { booleanValue: val };
+  if (typeof val === "number") {
+    if (Number.isInteger(val)) return { integerValue: String(val) };
+    return { doubleValue: val };
+  }
+  if (typeof val === "string") return { stringValue: val };
+  if (Array.isArray(val)) {
+    return { arrayValue: { values: val.map(toFirestoreValue) } };
+  }
+  if (typeof val === "object") {
+    const fields: Record<string, any> = {};
+    for (const [k, v] of Object.entries(val)) {
+      if (v !== undefined) fields[k] = toFirestoreValue(v);
+    }
+    return { mapValue: { fields } };
+  }
+  return { stringValue: String(val) };
+}
+
+function fromFirestoreValue(val: any): any {
+  if (!val) return null;
+  if ("nullValue" in val) return null;
+  if ("booleanValue" in val) return val.booleanValue;
+  if ("integerValue" in val) return parseInt(val.integerValue, 10);
+  if ("doubleValue" in val) return val.doubleValue;
+  if ("stringValue" in val) return val.stringValue;
+  if ("arrayValue" in val) return (val.arrayValue.values || []).map(fromFirestoreValue);
+  if ("mapValue" in val) {
+    const obj: Record<string, any> = {};
+    for (const [k, v] of Object.entries(val.mapValue.fields || {})) {
+      obj[k] = fromFirestoreValue(v);
+    }
+    return obj;
+  }
+  return null;
 }
 
 // In-memory data structures
@@ -1067,49 +1113,77 @@ let helpdeskTickets: Ticket[] = [
   }
 ];
 
-// --- FIREBASE SYNC HELPERS ---
+// --- FIREBASE REST SYNC HELPERS ---
 async function saveTenantToFirestore(tenantId: string) {
-  if (!db) return;
+  if (!firestoreBaseUrl || !firebaseConfig) return;
   try {
     const data = tenantData[tenantId];
     if (data) {
-      await db.collection("salon_tenants").doc(tenantId).set(data);
-      console.log(`[Firebase] Inquilino '${tenantId}' guardado con éxito.`);
+      const url = `${firestoreBaseUrl}/salon_tenants/${tenantId}?key=${firebaseConfig.apiKey}`;
+      const body = { fields: toFirestoreValue(data).mapValue.fields };
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      if (res.ok) {
+        console.log(`[Firebase] Inquilino '${tenantId}' persistido con éxito en Firestore.`);
+      } else {
+        const errText = await res.text();
+        console.warn(`[Firebase] Nota: Error guardando inquilino '${tenantId}' (${res.status}):`, errText);
+      }
     }
   } catch (err: any) {
-    console.warn(`[Firebase] Nota: No se pudo sincronizar el inquilino '${tenantId}' en Firestore (${err?.message || 'Permisos restringidos'}). Datos en memoria activos.`);
+    console.warn(`[Firebase] Error en saveTenantToFirestore ('${tenantId}'):`, err?.message);
   }
 }
 
 async function saveGlobalsToFirestore() {
-  if (!db) return;
+  if (!firestoreBaseUrl || !firebaseConfig || !isFirestoreLoaded) return;
   try {
-    await db.collection("salon_system").doc("globals").set({
+    const url = `${firestoreBaseUrl}/salon_system/globals?key=${firebaseConfig.apiKey}`;
+    const payload = {
       tenants,
       salonAdmins,
       generatedLicenses,
       helpdeskTickets
+    };
+    const body = { fields: toFirestoreValue(payload).mapValue.fields };
+    const res = await fetch(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
     });
-    console.log("[Firebase] Variables globales guardadas con éxito.");
+    if (res.ok) {
+      console.log("[Firebase] Variables globales persistidas con éxito en Firestore.");
+    } else {
+      const errText = await res.text();
+      console.warn(`[Firebase] Nota: Error guardando variables globales (${res.status}):`, errText);
+    }
   } catch (err: any) {
-    console.warn(`[Firebase] Nota: No se pudieron sincronizar las variables globales en Firestore (${err?.message || 'Permisos restringidos'}). Estado en memoria activo.`);
+    console.warn("[Firebase] Error en saveGlobalsToFirestore:", err?.message);
   }
 }
 
 async function loadFromFirestore() {
-  if (!db) return;
+  if (!firestoreBaseUrl || !firebaseConfig) {
+    isFirestoreLoaded = true;
+    return;
+  }
   try {
-    console.log("[Firebase] Cargando datos desde Firestore...");
+    console.log("[Firebase] Cargando datos persistidos desde Firestore REST API...");
     
     // 1. Load globals
-    const globalsRef = db.collection("salon_system").doc("globals");
-    const globalsSnap = await globalsRef.get();
-    if (globalsSnap.exists) {
-      const data = globalsSnap.data() || {};
+    const globalsUrl = `${firestoreBaseUrl}/salon_system/globals?key=${firebaseConfig.apiKey}`;
+    const globalsRes = await fetch(globalsUrl);
+    
+    if (globalsRes.ok) {
+      const rawGlobals = await globalsRes.json();
+      const data = fromFirestoreValue({ mapValue: rawGlobals }) || {};
       let needsGlobalsUpdate = false;
 
-      // Load tenants, preserving all but ensuring bella-barba is present and has a fallback name
-      if (data.tenants && Array.isArray(data.tenants)) {
+      // Load tenants list
+      if (data.tenants && Array.isArray(data.tenants) && data.tenants.length > 0) {
         tenants = data.tenants;
         let hasBellaBarba = false;
         tenants = tenants.map((t: any) => {
@@ -1137,8 +1211,8 @@ async function loadFromFirestore() {
         needsGlobalsUpdate = true;
       }
 
-      // Load salon admins, preserving all but ensuring bella-barba admin is present
-      if (data.salonAdmins && Array.isArray(data.salonAdmins)) {
+      // Load salon admins
+      if (data.salonAdmins && Array.isArray(data.salonAdmins) && data.salonAdmins.length > 0) {
         salonAdmins = data.salonAdmins;
         const bellaBarbaAdmin = salonAdmins.find((a: any) => a && a.salonId === "bella-barba" && a.username === "admin");
         if (!bellaBarbaAdmin) {
@@ -1153,8 +1227,8 @@ async function loadFromFirestore() {
         needsGlobalsUpdate = true;
       }
 
-      // Load generated licenses, preserving all but ensuring demo key exists with fallback salonName
-      if (data.generatedLicenses && Array.isArray(data.generatedLicenses)) {
+      // Load licenses
+      if (data.generatedLicenses && Array.isArray(data.generatedLicenses) && data.generatedLicenses.length > 0) {
         generatedLicenses = data.generatedLicenses;
         let hasDemoLicense = false;
         generatedLicenses = generatedLicenses.map((l: any) => {
@@ -1184,107 +1258,86 @@ async function loadFromFirestore() {
         needsGlobalsUpdate = true;
       }
 
-      // Clean/load helpdesk tickets, preserving all
+      // Helpdesk tickets
       if (data.helpdeskTickets && Array.isArray(data.helpdeskTickets)) {
         helpdeskTickets = data.helpdeskTickets;
-      } else {
-        needsGlobalsUpdate = true;
       }
+
+      isFirestoreLoaded = true;
 
       if (needsGlobalsUpdate) {
-        await globalsRef.set({
-          tenants,
-          salonAdmins,
-          generatedLicenses,
-          helpdeskTickets
-        });
-        console.log("[Firebase] Variables globales saneadas y actualizadas en Firestore.");
-      } else {
-        console.log("[Firebase] Variables globales cargadas sin necesidad de saneo.");
+        await saveGlobalsToFirestore();
       }
     } else {
-      // Seed initial globals if not exist
-      await globalsRef.set({
-        tenants,
-        salonAdmins,
-        generatedLicenses,
-        helpdeskTickets
-      });
-      console.log("[Firebase] Variables globales inicializadas en Firestore.");
+      // First time initialization in Firestore
+      isFirestoreLoaded = true;
+      await saveGlobalsToFirestore();
+      console.log("[Firebase] Variables globales inicializadas por primera vez en Firestore.");
     }
 
-    // 2. Load all tenants (without deleting other custom tenants!)
-    const tenantsSnap = await db.collection("salon_tenants").get();
-    if (!tenantsSnap.empty) {
-      tenantsSnap.forEach((doc: any) => {
-        const tId = doc.id;
-        tenantData[tId] = doc.data();
-      });
-
-      // Ensure bella-barba is present
-      if (!tenantData["bella-barba"]) {
-        tenantData["bella-barba"] = {
-          config: {
-            name: "Barberia Demo",
-            openTime: "09:00",
-            closeTime: "20:00",
-            workingDays: [1, 2, 3, 4, 5, 6],
-            intervalMinutes: 30,
-            licenseType: "premium",
-            activeLicenseKey: "LIC-PREM-V98X2-2026",
-            accentColor: "gold",
-            textColor: "#FFFFFF",
-            backgroundColor: "#060A13",
-            cardColor: "#0E1524",
-            subCardColor: "#162237",
-            borderColor: "#1F314D",
-            tagline: "Arte, Precisión & Estilo Masculino",
-          },
-          services: [
-            { id: "s1", name: "Corte de Cabello Básico", price: 15000, duration: 30, category: "cabello", description: "Corte tradicional." },
-            { id: "s2", name: "Perfilado de Barba", price: 10000, duration: 30, category: "barba", description: "Arreglo completo de barba con navaja y toalla caliente." }
-          ],
-          barbers: [
-            { id: "b1", name: "Barbero Principal", username: "barbero1", password: "123", isActive: true, specialties: ["cabello", "barba"] }
-          ],
-          appointments: [],
-          clients: [],
-          reviews: []
-        };
-        await db.collection("salon_tenants").doc("bella-barba").set(tenantData["bella-barba"]);
-        console.log("[Firebase] Barberia Demo re-inicializada en Firestore.");
-      } else {
-        // Ensure config exists
-        if (!tenantData["bella-barba"].config) {
-          tenantData["bella-barba"].config = {
-            name: "Barberia Demo",
-            openTime: "09:00",
-            closeTime: "20:00",
-            workingDays: [1, 2, 3, 4, 5, 6],
-            intervalMinutes: 30,
-            licenseType: "premium",
-            activeLicenseKey: "LIC-PREM-V98X2-2026",
-            accentColor: "gold",
-            textColor: "#FFFFFF",
-            backgroundColor: "#060A13",
-            cardColor: "#0E1524",
-            subCardColor: "#162237",
-            borderColor: "#1F314D",
-            tagline: "Arte, Precisión & Estilo Masculino",
-          };
-          await db.collection("salon_tenants").doc("bella-barba").set(tenantData["bella-barba"]);
-          console.log("[Firebase] Config de Barberia Demo inicializada en Firestore.");
+    // 2. Load all individual tenant documents from Firestore
+    console.log(`[Firebase] Cargando ${tenants.length} inquilinos registrados...`);
+    for (const t of tenants) {
+      if (!t || !t.id) continue;
+      try {
+        const tenantUrl = `${firestoreBaseUrl}/salon_tenants/${t.id}?key=${firebaseConfig.apiKey}`;
+        const tenantRes = await fetch(tenantUrl);
+        if (tenantRes.ok) {
+          const rawTenant = await tenantRes.json();
+          const parsed = fromFirestoreValue({ mapValue: rawTenant });
+          if (parsed && typeof parsed === "object") {
+            tenantData[t.id] = parsed;
+            console.log(`[Firebase] Inquilino '${t.id}' (${parsed.config?.name || t.name}) cargado desde Firestore.`);
+          }
+        } else if (tenantRes.status === 404) {
+          // If tenant doesn't exist in Firestore yet (e.g. bella-barba default), save it
+          if (tenantData[t.id]) {
+            await saveTenantToFirestore(t.id);
+            console.log(`[Firebase] Inquilino '${t.id}' sembrado en Firestore.`);
+          }
         }
+      } catch (tErr: any) {
+        console.warn(`[Firebase] Error cargando inquilino '${t.id}':`, tErr?.message);
       }
-      console.log("[Firebase] Inquilinos cargados y saneados.");
-    } else {
-      // Seed default tenants if empty
-      for (const tId of Object.keys(tenantData)) {
-        await db.collection("salon_tenants").doc(tId).set(tenantData[tId]);
-      }
-      console.log("[Firebase] Inquilinos por defecto inicializados en Firestore.");
     }
+
+    // Ensure bella-barba is always present
+    if (!tenantData["bella-barba"]) {
+      tenantData["bella-barba"] = {
+        config: {
+          name: "Barberia Demo",
+          openTime: "09:00",
+          closeTime: "20:00",
+          workingDays: [1, 2, 3, 4, 5, 6],
+          intervalMinutes: 30,
+          licenseType: "premium",
+          activeLicenseKey: "LIC-PREM-V98X2-2026",
+          accentColor: "gold",
+          textColor: "#FFFFFF",
+          backgroundColor: "#060A13",
+          cardColor: "#0E1524",
+          subCardColor: "#162237",
+          borderColor: "#1F314D",
+          tagline: "Arte, Precisión & Estilo Masculino",
+        },
+        services: [
+          { id: "s1", name: "Corte de Cabello Básico", price: 15000, duration: 30, category: "cabello", description: "Corte tradicional." },
+          { id: "s2", name: "Perfilado de Barba", price: 10000, duration: 30, category: "barba", description: "Arreglo completo de barba con navaja y toalla caliente." }
+        ],
+        barbers: [
+          { id: "b1", name: "Barbero Principal", username: "barbero1", password: "123", isActive: true, specialties: ["cabello", "barba"] }
+        ],
+        appointments: [],
+        clients: [],
+        reviews: [],
+        catalogStyles: DEFAULT_CATALOG_STYLES
+      };
+      await saveTenantToFirestore("bella-barba");
+    }
+
+    console.log("[Firebase] Todos los datos han sido cargados y sincronizados desde Firestore.");
   } catch (err: any) {
+    isFirestoreLoaded = true;
     console.warn("[Firebase] Nota: No se pudieron cargar datos desde Firestore:", err?.message || err);
   }
 }
@@ -3815,6 +3868,13 @@ app.post("/api/cash-register/close", (req, res) => {
 
 // Setup Vite development or production serving
 async function startServer() {
+  // Load initial data from Firebase Firestore before accepting incoming HTTP requests
+  try {
+    await loadFromFirestore();
+  } catch (err) {
+    console.error("[Firebase] Error en carga inicial de Firestore:", err);
+  }
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -3829,14 +3889,8 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", async () => {
-    console.log(`[Server] Corriendo en puerto ${PORT}`);
-    // Load initial data from Firebase Firestore asynchronously after server starts
-    try {
-      await loadFromFirestore();
-    } catch (err) {
-      console.error("[Firebase] Error en carga inicial asíncrona de Firestore:", err);
-    }
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`[Server] Corriendo en puerto ${PORT} con Firestore sincronizado.`);
   });
 }
 
