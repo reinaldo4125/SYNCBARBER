@@ -23,6 +23,14 @@ let firebaseConfig: FirebaseAppConfig | null = null;
 let firestoreBaseUrl = "";
 let isFirestoreLoaded = false;
 
+// Environment separation: Development uses dev_ prefix to isolate test data from real production data
+const envMode = (process.env.FIRESTORE_ENV || (process.env.NODE_ENV === "production" ? "prod" : "dev")).toLowerCase();
+const isProduction = envMode === "prod" || envMode === "production";
+const SYSTEM_COLLECTION = isProduction ? "salon_system" : "dev_salon_system";
+const TENANTS_COLLECTION = isProduction ? "salon_tenants" : "dev_salon_tenants";
+
+console.log(`[Firebase] Entorno BD activo: ${isProduction ? "🟢 PRODUCCIÓN" : "🟡 DESARROLLO"} (Colecciones: ${SYSTEM_COLLECTION} / ${TENANTS_COLLECTION})`);
+
 try {
   if (fs.existsSync("./firebase-applet-config.json")) {
     firebaseConfig = JSON.parse(fs.readFileSync("./firebase-applet-config.json", "utf-8"));
@@ -1119,7 +1127,7 @@ async function saveTenantToFirestore(tenantId: string) {
   try {
     const data = tenantData[tenantId];
     if (data) {
-      const url = `${firestoreBaseUrl}/salon_tenants/${tenantId}?key=${firebaseConfig.apiKey}`;
+      const url = `${firestoreBaseUrl}/${TENANTS_COLLECTION}/${tenantId}?key=${firebaseConfig.apiKey}`;
       const body = { fields: toFirestoreValue(data).mapValue.fields };
       const res = await fetch(url, {
         method: "PATCH",
@@ -1127,7 +1135,7 @@ async function saveTenantToFirestore(tenantId: string) {
         body: JSON.stringify(body)
       });
       if (res.ok) {
-        console.log(`[Firebase] Inquilino '${tenantId}' persistido con éxito en Firestore.`);
+        console.log(`[Firebase] [${TENANTS_COLLECTION}] Inquilino '${tenantId}' persistido con éxito en Firestore.`);
       } else {
         const errText = await res.text();
         console.warn(`[Firebase] Nota: Error guardando inquilino '${tenantId}' (${res.status}):`, errText);
@@ -1141,7 +1149,7 @@ async function saveTenantToFirestore(tenantId: string) {
 async function saveGlobalsToFirestore() {
   if (!firestoreBaseUrl || !firebaseConfig || !isFirestoreLoaded) return;
   try {
-    const url = `${firestoreBaseUrl}/salon_system/globals?key=${firebaseConfig.apiKey}`;
+    const url = `${firestoreBaseUrl}/${SYSTEM_COLLECTION}/globals?key=${firebaseConfig.apiKey}`;
     const payload = {
       tenants,
       salonAdmins,
@@ -1155,7 +1163,7 @@ async function saveGlobalsToFirestore() {
       body: JSON.stringify(body)
     });
     if (res.ok) {
-      console.log("[Firebase] Variables globales persistidas con éxito en Firestore.");
+      console.log(`[Firebase] [${SYSTEM_COLLECTION}] Variables globales persistidas con éxito en Firestore.`);
     } else {
       const errText = await res.text();
       console.warn(`[Firebase] Nota: Error guardando variables globales (${res.status}):`, errText);
@@ -1171,10 +1179,10 @@ async function loadFromFirestore() {
     return;
   }
   try {
-    console.log("[Firebase] Cargando datos persistidos desde Firestore REST API...");
+    console.log(`[Firebase] Cargando datos (${SYSTEM_COLLECTION} / ${TENANTS_COLLECTION}) desde Firestore...`);
     
     // 1. Load globals
-    const globalsUrl = `${firestoreBaseUrl}/salon_system/globals?key=${firebaseConfig.apiKey}`;
+    const globalsUrl = `${firestoreBaseUrl}/${SYSTEM_COLLECTION}/globals?key=${firebaseConfig.apiKey}`;
     const globalsRes = await fetch(globalsUrl);
     
     if (globalsRes.ok) {
@@ -1272,28 +1280,28 @@ async function loadFromFirestore() {
       // First time initialization in Firestore
       isFirestoreLoaded = true;
       await saveGlobalsToFirestore();
-      console.log("[Firebase] Variables globales inicializadas por primera vez en Firestore.");
+      console.log(`[Firebase] Variables globales inicializadas por primera vez en Firestore (${SYSTEM_COLLECTION}).`);
     }
 
     // 2. Load all individual tenant documents from Firestore
-    console.log(`[Firebase] Cargando ${tenants.length} inquilinos registrados...`);
+    console.log(`[Firebase] Cargando ${tenants.length} inquilinos registrados en ${TENANTS_COLLECTION}...`);
     for (const t of tenants) {
       if (!t || !t.id) continue;
       try {
-        const tenantUrl = `${firestoreBaseUrl}/salon_tenants/${t.id}?key=${firebaseConfig.apiKey}`;
+        const tenantUrl = `${firestoreBaseUrl}/${TENANTS_COLLECTION}/${t.id}?key=${firebaseConfig.apiKey}`;
         const tenantRes = await fetch(tenantUrl);
         if (tenantRes.ok) {
           const rawTenant = await tenantRes.json();
           const parsed = fromFirestoreValue({ mapValue: rawTenant });
           if (parsed && typeof parsed === "object") {
             tenantData[t.id] = parsed;
-            console.log(`[Firebase] Inquilino '${t.id}' (${parsed.config?.name || t.name}) cargado desde Firestore.`);
+            console.log(`[Firebase] Inquilino '${t.id}' (${parsed.config?.name || t.name}) cargado desde ${TENANTS_COLLECTION}.`);
           }
         } else if (tenantRes.status === 404) {
           // If tenant doesn't exist in Firestore yet (e.g. bella-barba default), save it
           if (tenantData[t.id]) {
             await saveTenantToFirestore(t.id);
-            console.log(`[Firebase] Inquilino '${t.id}' sembrado en Firestore.`);
+            console.log(`[Firebase] Inquilino '${t.id}' sembrado en ${TENANTS_COLLECTION}.`);
           }
         }
       } catch (tErr: any) {
@@ -1335,7 +1343,7 @@ async function loadFromFirestore() {
       await saveTenantToFirestore("bella-barba");
     }
 
-    console.log("[Firebase] Todos los datos han sido cargados y sincronizados desde Firestore.");
+    console.log(`[Firebase] Sincronización completa con Firestore (${SYSTEM_COLLECTION} / ${TENANTS_COLLECTION}).`);
   } catch (err: any) {
     isFirestoreLoaded = true;
     console.warn("[Firebase] Nota: No se pudieron cargar datos desde Firestore:", err?.message || err);
@@ -1493,6 +1501,12 @@ app.get("/api/developer/analytics", (req, res) => {
       mrr: mrr,
       arpu: arpu,
       activeSalonsCount: tenantKeys.length,
+      environment: isProduction ? "production" : "development",
+      environmentLabel: isProduction ? "🟢 Producción (Real)" : "🟡 Desarrollo / Sandbox (Pruebas)",
+      collections: {
+        system: SYSTEM_COLLECTION,
+        tenants: TENANTS_COLLECTION
+      }
     },
     salonMetrics,
     licenseCounts,

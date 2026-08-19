@@ -445,8 +445,9 @@ export default function DeveloperPanel({
   // Simulated Telemetry logs
   const [logs, setLogs] = useState<{ id: string; timestamp: string; tag: string; text: string; type: "info" | "success" | "warn" | "error" }[]>([]);
 
-  // Statistics
+  // Statistics & Environment info
   const [activeConnections, setActiveConnections] = useState(3); // Simulated default
+  const [envInfo, setEnvInfo] = useState<{ environment: string; environmentLabel: string; collections: { system: string; tenants: string } } | null>(null);
 
   const fetchTenants = async () => {
     try {
@@ -455,6 +456,13 @@ export default function DeveloperPanel({
       if (res.ok) {
         const data = await res.json();
         setTenantsList(data.tenants);
+        if (data.summary?.environment) {
+          setEnvInfo({
+            environment: data.summary.environment,
+            environmentLabel: data.summary.environmentLabel,
+            collections: data.summary.collections
+          });
+        }
         return data.tenants;
       }
     } catch (e) {
@@ -1405,7 +1413,7 @@ export default function DeveloperPanel({
 
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
           <div className="space-y-2">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="p-1 bg-amber-500/10 text-elegant-gold rounded-lg border border-amber-500/20 text-xs font-bold px-2 py-0.5 font-mono">
                 SUPERUSER PORTAL
               </span>
@@ -1413,6 +1421,17 @@ export default function DeveloperPanel({
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                 Consola Lista
               </span>
+              {envInfo && (
+                <span className={`flex items-center gap-1 text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full border ${
+                  envInfo.environment === "production"
+                    ? "bg-emerald-950/80 text-emerald-300 border-emerald-700/60 shadow-sm shadow-emerald-900/50"
+                    : "bg-amber-950/80 text-amber-300 border-amber-700/60 shadow-sm shadow-amber-900/50"
+                }`}>
+                  <Database className="h-3 w-3" />
+                  <span>BD: {envInfo.environmentLabel}</span>
+                  <span className="opacity-60 text-[9px]">({envInfo.collections?.tenants})</span>
+                </span>
+              )}
             </div>
             <h1 className="text-xl md:text-2xl font-extrabold text-white tracking-tight">
               Panel de Control del Desarrollador & Licencias
