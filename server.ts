@@ -12,7 +12,7 @@ const PORT = 3000;
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-// --- FIREBASE FIRESTORE REST PERSISTENCE SETUP ---
+// --- FIREBASE FIRESTORE REST PERSISTENCE & LOCAL BACKUP SETUP ---
 interface FirebaseAppConfig {
   projectId: string;
   apiKey: string;
@@ -23,6 +23,11 @@ let firebaseConfig: FirebaseAppConfig | null = null;
 let firestoreBaseUrl = "";
 let isFirestoreLoaded = false;
 
+// Local JSON Database Persistence Configuration
+const DATA_DIR = path.resolve(process.cwd(), "data");
+const LOCAL_DB_PATH = path.join(DATA_DIR, "syncbarber_db.json");
+const ROOT_DB_PATH = path.resolve(process.cwd(), "syncbarber_db.json");
+
 // Environment separation: Development uses dev_ prefix to isolate test data from real production data
 const envMode = (process.env.FIRESTORE_ENV || (process.env.NODE_ENV === "production" ? "prod" : "dev")).toLowerCase();
 const isProduction = envMode === "prod" || envMode === "production";
@@ -31,18 +36,31 @@ const TENANTS_COLLECTION = isProduction ? "salon_tenants" : "dev_salon_tenants";
 
 console.log(`[Firebase] Entorno BD activo: ${isProduction ? "🟢 PRODUCCIÓN" : "🟡 DESARROLLO"} (Colecciones: ${SYSTEM_COLLECTION} / ${TENANTS_COLLECTION})`);
 
-try {
-  if (fs.existsSync("./firebase-applet-config.json")) {
-    firebaseConfig = JSON.parse(fs.readFileSync("./firebase-applet-config.json", "utf-8"));
-    if (firebaseConfig && firebaseConfig.projectId && firebaseConfig.firestoreDatabaseId) {
-      firestoreBaseUrl = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId}/documents`;
-      console.log("[Firebase] Conectado a Firestore. Base de datos ID:", firebaseConfig.firestoreDatabaseId);
+// Find and load firebase-applet-config.json across multiple possible runtime paths
+const configCandidates = [
+  path.resolve(process.cwd(), "firebase-applet-config.json"),
+  path.resolve(__dirname, "firebase-applet-config.json"),
+  path.resolve(__dirname, "../firebase-applet-config.json"),
+  "./firebase-applet-config.json"
+];
+
+for (const cfgPath of configCandidates) {
+  try {
+    if (fs.existsSync(cfgPath)) {
+      firebaseConfig = JSON.parse(fs.readFileSync(cfgPath, "utf-8"));
+      if (firebaseConfig && firebaseConfig.projectId && firebaseConfig.firestoreDatabaseId) {
+        firestoreBaseUrl = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId}/documents`;
+        console.log(`[Firebase] Conectado a Firestore vía ${cfgPath}. Base de datos ID: ${firebaseConfig.firestoreDatabaseId}`);
+        break;
+      }
     }
-  } else {
-    console.warn("[Firebase] No se encontró el archivo firebase-applet-config.json");
+  } catch (err: any) {
+    // try next candidate
   }
-} catch (error: any) {
-  console.error("[Firebase] Error al leer configuración de Firebase:", error?.message);
+}
+
+if (!firebaseConfig) {
+  console.warn("[Firebase] Nota: firebase-applet-config.json no detectado. Se utilizará la persistencia local en disco.");
 }
 
 // Helpers to serialize and deserialize between JS objects and Firestore REST API documents
@@ -1426,8 +1444,71 @@ let helpdeskTickets: Ticket[] = [
   }
 ];
 
-// --- FIREBASE REST SYNC HELPERS ---
+// --- DUAL PERSISTENCE: LOCAL JSON DISK BACKUP & FIREBASE FIRESTORE SYNC ---
+
+function saveToLocalDisk() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    const backup = {
+      version: "3.5",
+      updatedAt: new Date().toISOString(),
+      tenants,
+      salonAdmins,
+      generatedLicenses,
+      helpdeskTickets,
+      tenantData,
+      globalAnnouncements,
+      saasPricingPlans,
+      memberships
+    };
+    fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(backup, null, 2), "utf-8");
+    fs.writeFileSync(ROOT_DB_PATH, JSON.stringify(backup, null, 2), "utf-8");
+    // console.log("[Local DB] 💾 Estado guardado en disco.");
+  } catch (err: any) {
+    console.error("[Local DB] Error al guardar base de datos local:", err?.message);
+  }
+}
+
+function loadFromLocalDisk(): boolean {
+  try {
+    let filePath = "";
+    if (fs.existsSync(LOCAL_DB_PATH)) {
+      filePath = LOCAL_DB_PATH;
+    } else if (fs.existsSync(ROOT_DB_PATH)) {
+      filePath = ROOT_DB_PATH;
+    }
+
+    if (filePath) {
+      const raw = fs.readFileSync(filePath, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        if (Array.isArray(parsed.tenants) && parsed.tenants.length > 0) tenants = parsed.tenants;
+        if (Array.isArray(parsed.salonAdmins) && parsed.salonAdmins.length > 0) salonAdmins = parsed.salonAdmins;
+        if (Array.isArray(parsed.generatedLicenses) && parsed.generatedLicenses.length > 0) generatedLicenses = parsed.generatedLicenses;
+        if (Array.isArray(parsed.helpdeskTickets) && parsed.helpdeskTickets.length > 0) helpdeskTickets = parsed.helpdeskTickets;
+        if (parsed.tenantData && typeof parsed.tenantData === "object" && Object.keys(parsed.tenantData).length > 0) {
+          Object.assign(tenantData, parsed.tenantData);
+        }
+        if (Array.isArray(parsed.globalAnnouncements) && parsed.globalAnnouncements.length > 0) globalAnnouncements = parsed.globalAnnouncements;
+        if (parsed.saasPricingPlans) saasPricingPlans = parsed.saasPricingPlans;
+        if (Array.isArray(parsed.memberships) && parsed.memberships.length > 0) memberships = parsed.memberships;
+
+        console.log(`[Local DB] 💾 Recuperados ${tenants.length} inquilinos desde almacenamiento local (${filePath}).`);
+        return true;
+      }
+    }
+  } catch (err: any) {
+    console.error("[Local DB] Error al leer base de datos local:", err?.message);
+  }
+  return false;
+}
+
 async function saveTenantToFirestore(tenantId: string) {
+  // Always persist instantly to local disk first
+  saveToLocalDisk();
+
   if (!firestoreBaseUrl || !firebaseConfig) return;
   try {
     const data = tenantData[tenantId];
@@ -1452,6 +1533,9 @@ async function saveTenantToFirestore(tenantId: string) {
 }
 
 async function saveGlobalsToFirestore() {
+  // Always persist instantly to local disk first
+  saveToLocalDisk();
+
   if (!firestoreBaseUrl || !firebaseConfig || !isFirestoreLoaded) return;
   try {
     const url = `${firestoreBaseUrl}/${SYSTEM_COLLECTION}/globals?key=${firebaseConfig.apiKey}`;
@@ -1459,7 +1543,10 @@ async function saveGlobalsToFirestore() {
       tenants,
       salonAdmins,
       generatedLicenses,
-      helpdeskTickets
+      helpdeskTickets,
+      saasPricingPlans,
+      memberships,
+      globalAnnouncements
     };
     const body = { fields: toFirestoreValue(payload).mapValue.fields };
     const res = await fetch(url, {
@@ -1479,17 +1566,32 @@ async function saveGlobalsToFirestore() {
 }
 
 async function loadFromFirestore() {
+  // Step 1: Preload from local disk backup immediately
+  loadFromLocalDisk();
+
   if (!firestoreBaseUrl || !firebaseConfig) {
     isFirestoreLoaded = true;
+    console.log(`[Persistence] 📁 Operando con persistencia local en disco (${LOCAL_DB_PATH}).`);
     return;
   }
+
   try {
     console.log(`[Firebase] Cargando datos (${SYSTEM_COLLECTION} / ${TENANTS_COLLECTION}) desde Firestore...`);
     
-    // 1. Load globals
-    const globalsUrl = `${firestoreBaseUrl}/${SYSTEM_COLLECTION}/globals?key=${firebaseConfig.apiKey}`;
-    const globalsRes = await fetch(globalsUrl);
+    // Step 2: Load globals (check primary collection first, fallback to dev if empty)
+    let globalsUrl = `${firestoreBaseUrl}/${SYSTEM_COLLECTION}/globals?key=${firebaseConfig.apiKey}`;
+    let globalsRes = await fetch(globalsUrl);
     
+    // If production collection is empty, check dev_salon_system for automatic migration
+    if (!globalsRes.ok && isProduction) {
+      const devGlobalsUrl = `${firestoreBaseUrl}/dev_salon_system/globals?key=${firebaseConfig.apiKey}`;
+      const devRes = await fetch(devGlobalsUrl);
+      if (devRes.ok) {
+        console.log("[Firebase] 🔄 Migrando datos existentes desde 'dev_salon_system' hacia 'salon_system'...");
+        globalsRes = devRes;
+      }
+    }
+
     if (globalsRes.ok) {
       const rawGlobals = await globalsRes.json();
       const data = fromFirestoreValue({ mapValue: rawGlobals }) || {};
@@ -1497,111 +1599,30 @@ async function loadFromFirestore() {
 
       // Load tenants list
       if (data.tenants && Array.isArray(data.tenants) && data.tenants.length > 0) {
-        tenants = data.tenants;
-        let hasBellaBarba = false;
-        tenants = tenants.map((t: any) => {
-          if (t && t.id === "bella-barba") {
-            hasBellaBarba = true;
-            if (!t.name || t.isComplimentary === undefined) {
-              needsGlobalsUpdate = true;
-              return { 
-                ...t, 
-                name: t.name || "Barberia Demo",
-                isComplimentary: t.isComplimentary !== undefined ? t.isComplimentary : true,
-                billingExempt: t.billingExempt !== undefined ? t.billingExempt : true
-              };
-            }
+        // Merge with existing local tenants so none are lost
+        for (const remoteT of data.tenants) {
+          if (remoteT && remoteT.id && !tenants.some(lt => lt.id === remoteT.id)) {
+            tenants.push(remoteT);
           }
-          return t;
-        });
-
-        if (!hasBellaBarba) {
-          tenants.unshift({
-            id: "bella-barba",
-            name: "Barberia Demo",
-            licenseType: "premium",
-            activeLicenseKey: "LIC-PREM-V98X2-2026",
-            isComplimentary: true,
-            billingExempt: true
-          });
-          needsGlobalsUpdate = true;
         }
-      } else {
-        tenants = [{ 
-          id: "bella-barba", 
-          name: "Barberia Demo", 
-          licenseType: "premium", 
-          activeLicenseKey: "LIC-PREM-V98X2-2026",
-          isComplimentary: true,
-          billingExempt: true
-        }];
-        needsGlobalsUpdate = true;
       }
 
       // Load salon admins
       if (data.salonAdmins && Array.isArray(data.salonAdmins) && data.salonAdmins.length > 0) {
-        salonAdmins = data.salonAdmins;
-        const bellaBarbaAdmin = salonAdmins.find((a: any) => a && a.salonId === "bella-barba" && a.username === "admin");
-        if (!bellaBarbaAdmin) {
-          salonAdmins.push({ id: "adm_default", name: "Administrador General", username: "admin", password: "admin", salonId: "bella-barba" });
-          needsGlobalsUpdate = true;
-        } else if (bellaBarbaAdmin.password === "Salome2016.") {
-          bellaBarbaAdmin.password = "admin";
-          needsGlobalsUpdate = true;
+        for (const adm of data.salonAdmins) {
+          if (adm && adm.username && !salonAdmins.some(la => la.username.toLowerCase() === adm.username.toLowerCase())) {
+            salonAdmins.push(adm);
+          }
         }
-      } else {
-        salonAdmins = [{ id: "adm_default", name: "Administrador General", username: "admin", password: "admin", salonId: "bella-barba" }];
-        needsGlobalsUpdate = true;
       }
 
       // Load licenses
       if (data.generatedLicenses && Array.isArray(data.generatedLicenses) && data.generatedLicenses.length > 0) {
-        generatedLicenses = data.generatedLicenses;
-        let hasDemoLicense = false;
-        generatedLicenses = generatedLicenses.map((l: any) => {
-          if (l && (l.key === "LIC-PREM-V98X2-2026" || l.tenantId === "bella-barba")) {
-            hasDemoLicense = true;
-            if (!l.salonName || l.isComplimentary === undefined) {
-              needsGlobalsUpdate = true;
-              return { 
-                ...l, 
-                salonName: l.salonName || "Barberia Demo",
-                tenantId: l.tenantId || "bella-barba",
-                isComplimentary: l.isComplimentary !== undefined ? l.isComplimentary : true,
-                billingExempt: l.billingExempt !== undefined ? l.billingExempt : true
-              };
-            }
+        for (const lic of data.generatedLicenses) {
+          if (lic && lic.key && !generatedLicenses.some(ll => ll.key.toUpperCase() === lic.key.toUpperCase())) {
+            generatedLicenses.push(lic);
           }
-          return l;
-        });
-
-        if (!hasDemoLicense) {
-          generatedLicenses.unshift({
-            key: "LIC-PREM-V98X2-2026",
-            salonName: "Barberia Demo",
-            tenantId: "bella-barba",
-            licenseType: "premium",
-            isComplimentary: true,
-            billingExempt: true,
-            createdAt: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(),
-            activatedAt: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(),
-            status: "active"
-          });
-          needsGlobalsUpdate = true;
         }
-      } else {
-        generatedLicenses = [{ 
-          key: "LIC-PREM-V98X2-2026", 
-          salonName: "Barberia Demo", 
-          tenantId: "bella-barba",
-          licenseType: "premium", 
-          isComplimentary: true,
-          billingExempt: true,
-          createdAt: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(), 
-          activatedAt: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(), 
-          status: "active" 
-        }];
-        needsGlobalsUpdate = true;
       }
 
       // Helpdesk tickets
@@ -1610,50 +1631,72 @@ async function loadFromFirestore() {
       }
 
       isFirestoreLoaded = true;
-
-      if (needsGlobalsUpdate) {
-        await saveGlobalsToFirestore();
-      }
     } else {
-      // First time initialization in Firestore
       isFirestoreLoaded = true;
-      await saveGlobalsToFirestore();
-      console.log(`[Firebase] Variables globales inicializadas por primera vez en Firestore (${SYSTEM_COLLECTION}).`);
+      console.log(`[Firebase] Variables globales no encontradas en Firestore. Se inicializan desde memoria/disco.`);
     }
 
-    // 2. Load all individual tenant documents from Firestore
-    console.log(`[Firebase] Cargando ${tenants.length} inquilinos registrados en ${TENANTS_COLLECTION}...`);
-    for (const t of tenants) {
-      if (!t || !t.id) continue;
+    // Step 3: Discover all tenant documents directly via Firestore Collection List endpoint
+    const collectionsToQuery = [TENANTS_COLLECTION];
+    if (isProduction) collectionsToQuery.push("dev_salon_tenants");
+
+    for (const col of collectionsToQuery) {
       try {
-        const tenantUrl = `${firestoreBaseUrl}/${TENANTS_COLLECTION}/${t.id}?key=${firebaseConfig.apiKey}`;
-        const tenantRes = await fetch(tenantUrl);
-        if (tenantRes.ok) {
-          const rawTenant = await tenantRes.json();
-          const parsed = fromFirestoreValue({ mapValue: rawTenant });
-          if (parsed && typeof parsed === "object") {
-            tenantData[t.id] = parsed;
-            if (!tenantData[t.id].config) tenantData[t.id].config = {} as any;
-            if (t.id === "bella-barba" && tenantData[t.id].config.isComplimentary === undefined) {
-              tenantData[t.id].config.isComplimentary = true;
-              tenantData[t.id].config.billingExempt = true;
-              await saveTenantToFirestore(t.id);
+        const listUrl = `${firestoreBaseUrl}/${col}?key=${firebaseConfig.apiKey}`;
+        const listRes = await fetch(listUrl);
+        if (listRes.ok) {
+          const listJson = await listRes.json();
+          if (listJson.documents && Array.isArray(listJson.documents)) {
+            for (const doc of listJson.documents) {
+              const docId = doc.name ? doc.name.split("/").pop() : null;
+              if (docId) {
+                const parsed = fromFirestoreValue({ mapValue: doc });
+                if (parsed && typeof parsed === "object") {
+                  tenantData[docId] = parsed;
+                  if (!tenants.some(t => t.id === docId)) {
+                    tenants.push({
+                      id: docId,
+                      name: parsed.config?.name || docId,
+                      licenseType: parsed.config?.licenseType || "basica",
+                      activeLicenseKey: parsed.config?.activeLicenseKey || "",
+                      isComplimentary: Boolean(parsed.config?.isComplimentary),
+                      billingExempt: Boolean(parsed.config?.billingExempt)
+                    });
+                  }
+                  console.log(`[Firebase] Inquilino descubierto en colección '${col}': '${docId}' (${parsed.config?.name || docId})`);
+                }
+              }
             }
-            console.log(`[Firebase] Inquilino '${t.id}' (${parsed.config?.name || t.name}) cargado desde ${TENANTS_COLLECTION}.`);
-          }
-        } else if (tenantRes.status === 404) {
-          // If tenant doesn't exist in Firestore yet (e.g. bella-barba default), save it
-          if (tenantData[t.id]) {
-            await saveTenantToFirestore(t.id);
-            console.log(`[Firebase] Inquilino '${t.id}' sembrado en ${TENANTS_COLLECTION}.`);
           }
         }
-      } catch (tErr: any) {
-        console.warn(`[Firebase] Error cargando inquilino '${t.id}':`, tErr?.message);
+      } catch (listErr: any) {
+        console.warn(`[Firebase] Nota al listar colección '${col}':`, listErr?.message);
       }
     }
 
-    // Ensure bella-barba is always present
+    // Step 4: Ensure all known tenants in our list have their full data loaded
+    console.log(`[Firebase] Verificando ${tenants.length} inquilinos registrados...`);
+    for (const t of tenants) {
+      if (!t || !t.id) continue;
+      if (!tenantData[t.id]) {
+        try {
+          const tenantUrl = `${firestoreBaseUrl}/${TENANTS_COLLECTION}/${t.id}?key=${firebaseConfig.apiKey}`;
+          const tenantRes = await fetch(tenantUrl);
+          if (tenantRes.ok) {
+            const rawTenant = await tenantRes.json();
+            const parsed = fromFirestoreValue({ mapValue: rawTenant });
+            if (parsed && typeof parsed === "object") {
+              tenantData[t.id] = parsed;
+              console.log(`[Firebase] Inquilino '${t.id}' recuperado desde Firestore.`);
+            }
+          }
+        } catch (tErr: any) {
+          console.warn(`[Firebase] Error cargando inquilino '${t.id}':`, tErr?.message);
+        }
+      }
+    }
+
+    // Step 5: Guarantee default demo tenant exists
     if (!tenantData["bella-barba"]) {
       tenantData["bella-barba"] = {
         config: {
@@ -1671,6 +1714,8 @@ async function loadFromFirestore() {
           subCardColor: "#162237",
           borderColor: "#1F314D",
           tagline: "Arte, Precisión & Estilo Masculino",
+          isComplimentary: true,
+          billingExempt: true
         },
         services: [
           { id: "s1", name: "Corte de Cabello Básico", price: 15000, duration: 30, category: "cabello", description: "Corte tradicional." },
@@ -1687,10 +1732,15 @@ async function loadFromFirestore() {
       await saveTenantToFirestore("bella-barba");
     }
 
-    console.log(`[Firebase] Sincronización completa con Firestore (${SYSTEM_COLLECTION} / ${TENANTS_COLLECTION}).`);
+    // Save final synchronized state to local disk and Firestore
+    saveToLocalDisk();
+    await saveGlobalsToFirestore();
+
+    console.log(`[Persistence] ✅ Sincronización exitosa: ${tenants.length} barberías/inquilinos activos.`);
   } catch (err: any) {
     isFirestoreLoaded = true;
-    console.warn("[Firebase] Nota: No se pudieron cargar datos desde Firestore:", err?.message || err);
+    console.warn("[Firebase] Nota: No se pudieron cargar datos desde Firestore, operando con copia local:", err?.message || err);
+    saveToLocalDisk();
   }
 }
 
@@ -2556,16 +2606,29 @@ app.get("/api/developer/backup-export", (req, res) => {
 
 // Restore / Reset DB Endpoint
 app.post("/api/developer/backup-import", (req, res) => {
-  const { licenses, tenantsDataImport } = req.body;
+  const { licenses, tenantsDataImport, tenants: importedTenants, salonAdmins: importedAdmins, helpdeskTickets: importedTickets } = req.body;
   try {
     if (Array.isArray(licenses)) {
       generatedLicenses = licenses;
     }
+    if (Array.isArray(importedTenants)) {
+      tenants = importedTenants;
+    }
+    if (Array.isArray(importedAdmins)) {
+      salonAdmins = importedAdmins;
+    }
+    if (Array.isArray(importedTickets)) {
+      helpdeskTickets = importedTickets;
+    }
     if (tenantsDataImport && typeof tenantsDataImport === "object") {
       Object.assign(tenantData, tenantsDataImport);
+      for (const tId of Object.keys(tenantsDataImport)) {
+        saveTenantToFirestore(tId);
+      }
     }
     saveGlobalsToFirestore();
-    res.json({ message: "Copia de seguridad restaurada correctamente" });
+    saveToLocalDisk();
+    res.json({ message: "Copia de seguridad restaurada correctamente y persistida en disco y nube." });
   } catch (err) {
     res.status(500).json({ error: "Error al restaurar la base de datos" });
   }
@@ -2587,7 +2650,8 @@ app.get("/api/developer/health", (req, res) => {
     },
     tenantsCount: tenants.length,
     activeLicensesCount: generatedLicenses.filter(l => l.status !== "expired").length,
-    firestoreSyncStatus: firestoreBaseUrl && firebaseConfig ? "CONNECTED_CLOUD_FIRESTORE" : "LOCAL_IN_MEMORY_ONLY",
+    firestoreSyncStatus: firestoreBaseUrl && firebaseConfig ? "CONNECTED_CLOUD_FIRESTORE" : "LOCAL_FILE_PERSISTENCE",
+    localDbFile: fs.existsSync(LOCAL_DB_PATH) ? LOCAL_DB_PATH : (fs.existsSync(ROOT_DB_PATH) ? ROOT_DB_PATH : "NOT_CREATED_YET"),
     firestoreEnvironment: isProduction ? "PRODUCCIÓN" : "DESARROLLO",
     firestoreCollections: { system: SYSTEM_COLLECTION, tenants: TENANTS_COLLECTION },
     webSocketsActiveClients: 1,
