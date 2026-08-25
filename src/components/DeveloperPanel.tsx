@@ -60,6 +60,8 @@ import { SalonConfig } from "../types";
 import SaaSContractModal from "./SaaSContractModal";
 import TelemetrySimulator from "./TelemetrySimulator";
 import { DeveloperBarberManagerModal } from "./DeveloperBarberManagerModal";
+import VersionModal from "./VersionModal";
+import { CURRENT_APP_VERSION, CURRENT_APP_BUILD } from "../data/versionHistory";
 
 interface DeveloperPanelProps {
   config: SalonConfig;
@@ -225,6 +227,7 @@ export default function DeveloperPanel({
 
   // States for Developer Barber Management & Negotiated Quotas
   const [selectedBarberTenant, setSelectedBarberTenant] = useState<any | null>(null);
+  const [showDevVersionModal, setShowDevVersionModal] = useState<boolean>(false);
 
   const openContractModal = (tenant: any, license?: any) => {
     setSelectedContractTenant(tenant);
@@ -1494,6 +1497,14 @@ export default function DeveloperPanel({
               <span className="p-1 bg-amber-500/10 text-elegant-gold rounded-lg border border-amber-500/20 text-xs font-bold px-2 py-0.5 font-mono">
                 SUPERUSER PORTAL
               </span>
+              <button
+                onClick={() => setShowDevVersionModal(true)}
+                className="flex items-center gap-1.5 text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full border bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30 transition-all cursor-pointer shadow-sm"
+                title="Ver registro de versiones y changelog completo"
+              >
+                <Sparkles className="h-3 w-3 text-amber-400" />
+                <span>SyncBarber {CURRENT_APP_VERSION}</span>
+              </button>
               <span className="flex items-center text-emerald-400 gap-1 text-[10px] font-mono font-bold bg-emerald-950/50 border border-emerald-800/40 px-2 py-0.5 rounded-full animate-pulse">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                 Consola Lista
@@ -5873,6 +5884,12 @@ export default function DeveloperPanel({
           fetchTenants();
           fetchLicenses(true);
         }}
+      />
+
+      {/* Version & Changelog Modal */}
+      <VersionModal
+        isOpen={showDevVersionModal}
+        onClose={() => setShowDevVersionModal(false)}
       />
 
     </div>

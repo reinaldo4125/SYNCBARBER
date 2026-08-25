@@ -40,6 +40,8 @@ import ModoSillaPWA from "./components/ModoSillaPWA";
 import ModoKiosco from "./components/ModoKiosco";
 import CierreCajaModal from "./components/CierreCajaModal";
 import CatalogManager from "./components/CatalogManager";
+import VersionModal from "./components/VersionModal";
+import { CURRENT_APP_VERSION } from "./data/versionHistory";
 import { Camera } from "lucide-react";
 
 interface RealTimeToast {
@@ -105,6 +107,7 @@ export default function App() {
   });
   const [showKioscoModal, setShowKioscoModal] = useState<boolean>(false);
   const [showCierreCajaModal, setShowCierreCajaModal] = useState<boolean>(false);
+  const [showVersionModal, setShowVersionModal] = useState<boolean>(false);
 
   const [activeTenantId, setActiveTenantId] = useState<string>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -851,9 +854,18 @@ export default function App() {
                 )}
                 
                 <div className="flex flex-col">
-                  <span className="font-extrabold text-xs sm:text-sm tracking-tight text-white font-sans block max-w-[100px] xs:max-w-[140px] sm:max-w-none truncate">
-                    {config.name || "Barberia Demo"}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-extrabold text-xs sm:text-sm tracking-tight text-white font-sans block max-w-[100px] xs:max-w-[140px] sm:max-w-none truncate">
+                      {config.name || "Barberia Demo"}
+                    </span>
+                    <button
+                      onClick={() => setShowVersionModal(true)}
+                      className="text-[8.5px] font-mono font-extrabold text-amber-300 bg-amber-950/90 border border-amber-800/80 px-1.5 py-0.2 rounded-full hover:bg-amber-900 transition-all cursor-pointer shrink-0 shadow-xs"
+                      title="Ver registro de versión y novedades"
+                    >
+                      {CURRENT_APP_VERSION}
+                    </button>
+                  </div>
                   {config.tagline ? (
                     <p className="text-[7px] sm:text-[9px] text-elegant-gold font-bold uppercase mt-0.5 leading-none max-w-[140px] xs:max-w-[200px] sm:max-w-xs truncate" title={config.tagline}>
                       {config.tagline}
@@ -1708,6 +1720,12 @@ export default function App() {
           onClose={() => setShowCierreCajaModal(false)}
         />
       )}
+
+      {/* 9. MODAL HISTORIAL Y NOVEDADES DE LA VERSIÓN */}
+      <VersionModal
+        isOpen={showVersionModal}
+        onClose={() => setShowVersionModal(false)}
+      />
 
       {/* DemoCenter removed per user request */}
 
