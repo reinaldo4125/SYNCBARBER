@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { Appointment, Service, SalonConfig, AppointmentStatus, Barber, MembershipPlan, ClientAccount, BarberReview, CatalogStyle } from "../types";
 import PWAInstallBanner, { PWAHeaderButton, PWABookingSuccessPrompt } from "./PWAInstallBanner";
 import ClientStyleLookbookModal from "./ClientStyleLookbookModal";
+import { showPushNotification, getWhatsAppNotificationUrl } from "../utils/pushNotifications";
+import { formatTime } from "../utils/formatters";
 import { 
   Scissors, 
   Clock, 
@@ -26,7 +28,8 @@ import {
   History,
   Camera,
   Image as ImageIcon,
-  BookOpen
+  BookOpen,
+  MessageCircle
 } from "lucide-react";
 
 interface ClientDashboardProps {
@@ -62,15 +65,20 @@ export default function ClientDashboard({
   const [loggedClient, setLoggedClient] = useState<ClientAccount | null>(null);
 
   // Client Auth Form States
-  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authMode, setAuthMode] = useState<"login" | "register" | "forgot">("login");
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authName, setAuthName] = useState("");
   const [authPhone, setAuthPhone] = useState("");
+  const [authBirthDate, setAuthBirthDate] = useState("");
   const [authError, setAuthError] = useState("");
   const [authSuccess, setAuthSuccess] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [subscribingPlanId, setSubscribingPlanId] = useState<string | null>(null);
+
+  // Profile birth date editing state
+  const [editingBirthDate, setEditingBirthDate] = useState(false);
+  const [userBirthDateInput, setUserBirthDateInput] = useState("");
 
   const getActiveDiscount = () => {
     if (!loggedClient || !loggedClient.membershipActive || !loggedClient.membershipId) return null;
@@ -122,12 +130,14 @@ export default function ClientDashboard({
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
   const [clientEmail, setClientEmail] = useState("");
+  const [clientBirthDate, setClientBirthDate] = useState("");
   const [clientNotes, setClientNotes] = useState("");
 
   const [bookingSuccess, setBookingSuccess] = useState<Appointment | null>(null);
   const [bookingError, setBookingError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [redeemReward, setRedeemReward] = useState(false);
+  const [useBirthdayBenefit, setUseBirthdayBenefit] = useState(false);
 
   // Review Form States (Propuesta A)
   const [reviewBarberId, setReviewBarberId] = useState("");
@@ -193,20 +203,28 @@ export default function ClientDashboard({
   // Synchronize client details with the server on mount or tab change to avoid stale cached localStorage data
   useEffect(() => {
     if (loggedClient && loggedClient.id) {
-      fetch(`/api/clients/${loggedClient.id}`)
-        .then((res) => {
-          if (res.ok) return res.json();
-          throw new Error("Failed to sync client profile");
-        })
-        .then((data) => {
-          if (data && data.success && data.client) {
-            console.log("[ClientDashboard] Sincronizado perfil de cliente con el servidor:", data.client);
-            setLoggedClient(data.client);
-            localStorage.setItem("bella_barba_logged_client", JSON.stringify(data.client));
+      const queryParams = new URLSearchParams();
+      if (loggedClient.phone) queryParams.set("phone", loggedClient.phone);
+      if (loggedClient.email) queryParams.set("email", loggedClient.email);
+      const queryString = queryParams.toString();
+      const url = `/api/clients/${loggedClient.id}${queryString ? `?${queryString}` : ""}`;
+
+      fetch(url)
+        .then(async (res) => {
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.success && data.client) {
+              setLoggedClient(data.client);
+              localStorage.setItem("bella_barba_logged_client", JSON.stringify(data.client));
+            }
+          } else if (res.status === 404) {
+            console.warn("[ClientDashboard] Sesión de cliente obsoleta en servidor, limpiando cache local.");
+            setLoggedClient(null);
+            localStorage.removeItem("bella_barba_logged_client");
           }
         })
         .catch((err) => {
-          console.error("[ClientDashboard] Error al sincronizar perfil de cliente:", err);
+          console.warn("[ClientDashboard] No se pudo sincronizar perfil con servidor (posible modo offline):", err);
         });
     }
   }, [clientTab]);
@@ -217,12 +235,38 @@ export default function ClientDashboard({
       setClientName(loggedClient.name);
       setClientPhone(loggedClient.phone);
       setClientEmail(loggedClient.email);
+      if (loggedClient.birthDate) {
+        setClientBirthDate(loggedClient.birthDate);
+        setUserBirthDateInput(loggedClient.birthDate);
+      }
     } else {
       setClientName("");
       setClientPhone("");
       setClientEmail("");
+      setClientBirthDate("");
+      setUserBirthDateInput("");
     }
   }, [loggedClient]);
+
+  const handleSaveProfileBirthDate = async () => {
+    if (!loggedClient) return;
+    if (!userBirthDateInput) return;
+    try {
+      const res = await fetch(`/api/clients/${loggedClient.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ birthDate: userBirthDateInput })
+      });
+      if (res.ok) {
+        const updated = { ...loggedClient, birthDate: userBirthDateInput };
+        setLoggedClient(updated);
+        localStorage.setItem("bella_barba_logged_client", JSON.stringify(updated));
+        setEditingBirthDate(false);
+      }
+    } catch (err) {
+      console.error("Error al actualizar fecha de cumpleaños:", err);
+    }
+  };
 
   // Check if a direct barber has been requested via URL/QR Code
   useEffect(() => {
@@ -483,6 +527,8 @@ export default function ClientDashboard({
         notes: clientNotes,
         barberId: selectedBarberId,
         redeemReward, // Propuesta B
+        birthDate: clientBirthDate || (loggedClient?.birthDate || undefined),
+        isBirthdayBenefit: useBirthdayBenefit,
         selectedStyleId: selectedCatalogStyle?.id,
         selectedStyleName: selectedCatalogStyle?.title,
         selectedStylePhotoUrl: selectedCatalogStyle?.photoUrl,
@@ -502,6 +548,12 @@ export default function ClientDashboard({
         
         // Show success
         setBookingSuccess(newApp);
+
+        // Trigger local Web Push notification if enabled
+        showPushNotification("🚨 ¡Tu Cita fue Confirmada! 💈", {
+          body: `Turno reservado para ${newApp.serviceName} el ${newApp.date} a las ${newApp.time}.`,
+          vibrate: [200, 100, 200]
+        });
         
         // Reset process
         setSelectedService(null);
@@ -552,6 +604,50 @@ export default function ClientDashboard({
       }, 1500);
     } catch (err: any) {
       setAuthError(err.message || "Credenciales incorrectas.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleClientResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError("");
+    setAuthSuccess("");
+    setAuthLoading(true);
+
+    if (!authEmail || !authPassword) {
+      setAuthError("Ingresa tu correo registrado y tu nueva contraseña.");
+      setAuthLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/clients/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: authEmail,
+          phone: authPhone,
+          newPassword: authPassword
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "No se pudo restablecer la contraseña.");
+      }
+
+      setAuthSuccess(data.message || "¡Contraseña restablecida con éxito!");
+      if (data.client) {
+        setLoggedClient(data.client);
+        localStorage.setItem("bella_barba_logged_client", JSON.stringify(data.client));
+      }
+      setTimeout(() => {
+        setAuthMode("login");
+        setAuthSuccess("");
+      }, 2500);
+    } catch (err: any) {
+      setAuthError(err.message || "Error al restablecer contraseña.");
     } finally {
       setAuthLoading(false);
     }
@@ -618,6 +714,7 @@ export default function ClientDashboard({
           name: authName,
           phone: authPhone,
           email: authEmail,
+          birthDate: authBirthDate || undefined,
           password: authPassword,
         }),
       });
@@ -634,6 +731,7 @@ export default function ClientDashboard({
       setAuthName("");
       setAuthPhone("");
       setAuthEmail("");
+      setAuthBirthDate("");
       setAuthPassword("");
 
       // Auto transition to memberships tab to let them choose
@@ -914,12 +1012,12 @@ export default function ClientDashboard({
               <div className="bg-emerald-950/40 border border-emerald-800/50 rounded-2xl p-5 text-center space-y-4 animate-scaleUp">
                 <CheckCircle className="h-10 w-10 text-emerald-400 mx-auto" />
                 <div className="space-y-1">
-                  <h3 className="font-bold text-white text-sm">¡Tu cita ha sido solicitada!</h3>
+                  <h3 className="font-bold text-white text-sm">¡Tu cita ha sido confirmada!</h3>
                   <p className="text-xs text-emerald-300">
-                    Tu turno para <strong>{bookingSuccess.serviceName}</strong> con <strong>{bookingSuccess.barberName || "Cualquier Barbero"}</strong> el día <strong>{formatDateLabel(bookingSuccess.date).full}</strong> a las <strong>{bookingSuccess.time}</strong> está listo.
+                    Tu turno para <strong>{bookingSuccess.serviceName}</strong> con <strong>{bookingSuccess.barberName || "Cualquier Barbero"}</strong> el día <strong>{formatDateLabel(bookingSuccess.date).full}</strong> a las <strong>{formatTime(bookingSuccess.time, config?.timeFormat)}</strong> está confirmado.
                   </p>
                   <p className="text-[11px] text-emerald-400 font-medium">
-                    Hemos guardado esta cita en tu navegador. Puedes revisar el estado de aprobación por el peluquero en la sección "Mis Citas" a la derecha.
+                    Tu reserva ha sido registrada y confirmada automáticamente. Te esperamos en la barbería en el horario seleccionado.
                   </p>
                 </div>
 
@@ -955,12 +1053,45 @@ export default function ClientDashboard({
                 {/* Acceso Directo Móvil en Pantalla de Inicio */}
                 <PWABookingSuccessPrompt config={config} />
 
-                <button
-                  onClick={() => setBookingSuccess(null)}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold cursor-pointer transition-colors"
-                >
-                  Reservar Otra Cita
-                </button>
+                {/* Botón Inmediato de WhatsApp al Barbero */}
+                {(() => {
+                  const targetBarber = barbers?.find(b => b.id === bookingSuccess.barberId);
+                  const targetPhone = targetBarber?.whatsapp || targetBarber?.phone || config?.whatsapp || config?.phone || "";
+                  if (!targetPhone) return null;
+                  const waUrl = getWhatsAppNotificationUrl(targetPhone, {
+                    clientName: bookingSuccess.clientName,
+                    clientPhone: bookingSuccess.clientPhone,
+                    serviceName: bookingSuccess.serviceName,
+                    barberName: bookingSuccess.barberName,
+                    date: bookingSuccess.date,
+                    time: bookingSuccess.time,
+                    price: bookingSuccess.price,
+                    salonName: config?.name,
+                    isBirthdayBenefit: bookingSuccess.isBirthdayBenefit
+                  });
+                  return (
+                    <div className="pt-2 max-w-sm mx-auto">
+                      <a
+                        href={waUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-bold rounded-xl text-xs sm:text-sm shadow-lg hover:shadow-emerald-500/20 transition-all border border-emerald-400/30 cursor-pointer"
+                      >
+                        <MessageCircle className="h-4 w-4 text-emerald-100 animate-pulse" />
+                        <span>📲 Confirmar por WhatsApp con el Barbero</span>
+                      </a>
+                    </div>
+                  );
+                })()}
+
+                <div className="pt-2">
+                  <button
+                    onClick={() => setBookingSuccess(null)}
+                    className="px-5 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 rounded-xl text-xs font-bold cursor-pointer transition-colors"
+                  >
+                    Volver al Inicio
+                  </button>
+                </div>
               </div>
             )}
 
@@ -1099,6 +1230,10 @@ export default function ClientDashboard({
                             onClick={() => {
                               setSelectedService(service);
                               setSelectedTime(""); // reset time when service changes
+                              if (service.allowRewardRedemption === false) {
+                                setUseBirthdayBenefit(false);
+                                setRedeemReward(false);
+                              }
                             }}
                             className={`border rounded-2xl p-4.5 cursor-pointer transition-all flex flex-col justify-between space-y-3.5 ${
                               isSelected
@@ -1108,7 +1243,18 @@ export default function ClientDashboard({
                           >
                             <div className="space-y-1.5">
                               <div className="flex justify-between items-start gap-2">
-                                <h4 className="font-bold text-sm text-white">{service.name}</h4>
+                                <div className="space-y-1">
+                                  <h4 className="font-bold text-sm text-white">{service.name}</h4>
+                                  {service.allowRewardRedemption === false ? (
+                                    <span className="inline-block text-[9px] bg-rose-950/60 text-rose-300 border border-rose-800/40 px-2 py-0.5 rounded-full font-bold">
+                                      🚫 No canjeable gratis
+                                    </span>
+                                  ) : (
+                                    <span className="inline-block text-[9px] bg-amber-950/40 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold">
+                                      🎁 Apto para Regalo/Cumpleaños
+                                    </span>
+                                  )}
+                                </div>
                                 <span className="text-sm font-bold font-mono text-elegant-gold whitespace-nowrap shrink-0">
                                   {formatPrice(service.price)}
                                 </span>
@@ -1326,7 +1472,7 @@ export default function ClientDashboard({
                                     : "bg-elegant-gold/10 border border-elegant-gold/30 hover:bg-elegant-gold/25 hover:border-elegant-gold text-elegant-gold cursor-pointer"
                               }`}
                             >
-                              {timeStr}
+                              {formatTime(timeStr, config?.timeFormat)}
                             </button>
                           );
                         })}
@@ -1408,18 +1554,95 @@ export default function ClientDashboard({
                           </div>
                         </div>
 
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-bold text-neutral-300 block uppercase tracking-wider">Correo Electrónico (Opcional)</label>
-                          <input
-                            type="email"
-                            value={clientEmail}
-                            onChange={(e) => setClientEmail(e.target.value)}
-                            placeholder="Ej: sofia@example.com"
-                            className="w-full px-3.5 py-3 border border-elegant-border rounded-xl text-sm focus:ring-2 focus:ring-elegant-gold bg-elegant-sub text-white placeholder-neutral-500"
-                          />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-neutral-300 block uppercase tracking-wider">Correo Electrónico (Opcional)</label>
+                            <input
+                              type="email"
+                              value={clientEmail}
+                              onChange={(e) => setClientEmail(e.target.value)}
+                              placeholder="Ej: sofia@example.com"
+                              className="w-full px-3.5 py-3 border border-elegant-border rounded-xl text-sm focus:ring-2 focus:ring-elegant-gold bg-elegant-sub text-white placeholder-neutral-500"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-amber-300 block uppercase tracking-wider flex items-center gap-1">
+                              <span>🎂 Fecha de Nacimiento / Cumpleaños</span>
+                            </label>
+                            <input
+                              type="date"
+                              value={clientBirthDate}
+                              onChange={(e) => setClientBirthDate(e.target.value)}
+                              className="w-full px-3.5 py-3 border border-amber-500/40 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 bg-elegant-sub text-white placeholder-neutral-500"
+                            />
+                          </div>
                         </div>
                       </>
                     )}
+
+                    {/* Beneficio Especial de Cumpleaños ($0 COP) */}
+                    {(() => {
+                      const activeBday = clientBirthDate || loggedClient?.birthDate || (() => {
+                        if (clientPhone) {
+                          const cleanP = clientPhone.replace(/\D/g, "");
+                          if (cleanP.length >= 7) {
+                            const match = clients.find(c => c.phone && c.phone.replace(/\D/g, "").includes(cleanP.slice(-7)));
+                            if (match) return match.birthDate;
+                          }
+                        }
+                        return "";
+                      })();
+
+                      const apptMonth = selectedDate ? selectedDate.substring(5, 7) : "";
+                      let bdayMonth = "";
+                      if (activeBday) {
+                        if (activeBday.includes("-")) {
+                          const parts = activeBday.split("-");
+                          bdayMonth = parts.length === 3 ? parts[1] : parts[0];
+                        }
+                      }
+
+                      const isBdayMonth = apptMonth && bdayMonth && apptMonth === bdayMonth;
+                      const currentYear = selectedDate ? selectedDate.substring(0, 4) : new Date().getFullYear().toString();
+                      const usedYears = loggedClient?.birthdayBenefitUsedYears || [];
+                      const alreadyUsed = usedYears.includes(currentYear);
+
+                      if (!isBdayMonth) return null;
+
+                      const isEligible = selectedService ? selectedService.allowRewardRedemption !== false : true;
+
+                      return (
+                        <div className="bg-gradient-to-r from-purple-950/80 via-amber-950/70 to-purple-950/80 border-2 border-amber-500/70 p-4 rounded-2xl text-sm flex items-center justify-between gap-3 animate-fadeIn shadow-lg">
+                          <div className="space-y-1 flex-1">
+                            <p className="font-extrabold text-amber-300 flex items-center gap-2 uppercase tracking-wider text-xs">
+                              <span>🎂 ¡FELIZ MES DE CUMPLEAÑOS!</span>
+                            </p>
+                            <p className="text-xs text-neutral-200">
+                              {alreadyUsed ? (
+                                <span className="text-amber-200/80 italic">Ya has utilizado tu regalo de corte gratis correspondiente a este año.</span>
+                              ) : !isEligible ? (
+                                <span className="text-rose-200/90 font-medium">
+                                  🚫 El servicio seleccionado (<strong>{selectedService?.name}</strong>) no aplica para corte gratis de cumpleaños. Por favor selecciona un servicio apto (ej. Corte Tradicional) si deseas aplicar tu regalo.
+                                </span>
+                              ) : (
+                                <span>🎉 Estás agendando en tu mes de cumpleaños. Tienes <strong>1 corte 100% GRATUITO de regalo ($0 COP)</strong>.</span>
+                              )}
+                            </p>
+                          </div>
+                          {!alreadyUsed && isEligible && (
+                            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                              <input 
+                                type="checkbox" 
+                                checked={useBirthdayBenefit} 
+                                onChange={(e) => setUseBirthdayBenefit(e.target.checked)}
+                                className="sr-only peer"
+                              />
+                              <div className="w-11 h-6 bg-neutral-900 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-neutral-400 after:border-neutral-400 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500 peer-checked:after:bg-black"></div>
+                            </label>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     <div className="space-y-1.5">
                       <label className="text-xs font-bold text-neutral-300 block uppercase tracking-wider">Notas para el Peluquero (Opcional)</label>
@@ -1433,28 +1656,39 @@ export default function ClientDashboard({
                     </div>
 
                     {/* Recompensa de fidelidad (Propuesta B) */}
-                    {loggedClient && (loggedClient.loyaltyPoints || 0) >= 5 && (
-                      <div className="bg-elegant-gold/5 border border-elegant-gold/30 p-4 rounded-2xl text-sm flex items-center justify-between gap-3 animate-fadeIn">
-                        <div className="space-y-1">
-                          <p className="font-bold text-elegant-gold flex items-center gap-2 uppercase tracking-wider text-xs">
-                            <Gift className="h-4 w-4" />
-                            ¡Recompensa Lista!
-                          </p>
-                          <p className="text-xs text-neutral-300">
-                            Tienes <strong>{loggedClient.loyaltyPoints} puntos</strong>. Puedes canjear 5 de ellos para que esta cita sea <strong>totalmente gratis</strong>.
-                          </p>
+                    {loggedClient && (loggedClient.loyaltyPoints || 0) >= 5 && (() => {
+                      const isEligible = selectedService ? selectedService.allowRewardRedemption !== false : true;
+                      return (
+                        <div className="bg-elegant-gold/5 border border-elegant-gold/30 p-4 rounded-2xl text-sm flex items-center justify-between gap-3 animate-fadeIn">
+                          <div className="space-y-1 flex-1">
+                            <p className="font-bold text-elegant-gold flex items-center gap-2 uppercase tracking-wider text-xs">
+                              <Gift className="h-4 w-4" />
+                              ¡Recompensa Lista!
+                            </p>
+                            <p className="text-xs text-neutral-300">
+                              {!isEligible ? (
+                                <span className="text-rose-200/90 font-medium">
+                                  🚫 El servicio seleccionado (<strong>{selectedService?.name}</strong>) no es apto para canjear por puntos de fidelización. Selecciona otro servicio para usar tus 5 puntos.
+                                </span>
+                              ) : (
+                                <span>Tienes <strong>{loggedClient.loyaltyPoints} puntos</strong>. Puedes canjear 5 de ellos para que esta cita sea <strong>totalmente gratis</strong>.</span>
+                              )}
+                            </p>
+                          </div>
+                          {isEligible && (
+                            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                              <input 
+                                type="checkbox" 
+                                checked={redeemReward} 
+                                onChange={(e) => setRedeemReward(e.target.checked)}
+                                className="sr-only peer"
+                              />
+                              <div className="w-11 h-6 bg-elegant-sub peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-neutral-500 after:border-neutral-500 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-elegant-gold peer-checked:after:bg-elegant-bg"></div>
+                            </label>
+                          )}
                         </div>
-                        <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                          <input 
-                            type="checkbox" 
-                            checked={redeemReward} 
-                            onChange={(e) => setRedeemReward(e.target.checked)}
-                            className="sr-only peer"
-                          />
-                          <div className="w-11 h-6 bg-elegant-sub peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-neutral-500 after:border-neutral-500 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-elegant-gold peer-checked:after:bg-elegant-bg"></div>
-                        </label>
-                      </div>
-                    )}
+                      );
+                    })()}
 
                     {/* Detection of active penalty surcharge */}
                     {(() => {
@@ -1545,11 +1779,13 @@ export default function ClientDashboard({
                           return 0;
                         })();
 
-                        const basePrice = discountPercent 
-                          ? Math.round(selectedService.price * (1 - discountPercent / 100)) 
-                          : selectedService.price;
+                        const basePrice = (useBirthdayBenefit || redeemReward)
+                          ? 0 
+                          : (discountPercent 
+                              ? Math.round(selectedService.price * (1 - discountPercent / 100)) 
+                              : selectedService.price);
                         
-                        const totalPrice = redeemReward ? clientPen : basePrice + clientPen;
+                        const totalPrice = basePrice + clientPen;
 
                         return (
                           <>
@@ -1561,7 +1797,16 @@ export default function ClientDashboard({
                             )}
                             <div className="text-neutral-200 flex items-center justify-between flex-wrap gap-2 pt-2 border-t border-elegant-gold/25">
                               <span className="text-sm font-semibold">Total a Pagar:</span>
-                              {redeemReward ? (
+                              {useBirthdayBenefit ? (
+                                <div className="text-right">
+                                  <span className="line-through text-neutral-400 mr-2 font-mono text-xs">
+                                    {formatPrice(selectedService.price)}
+                                  </span>
+                                  <strong className="text-amber-300 font-mono text-base uppercase font-black bg-amber-500/20 border border-amber-500/40 px-2.5 py-1 rounded-xl">
+                                    {clientPen > 0 ? `${formatPrice(totalPrice)} (Corte Gratis + Multa)` : "¡$0 COP! (🎂 Regalo Cumpleaños)"}
+                                  </strong>
+                                </div>
+                              ) : redeemReward ? (
                                 <div className="text-right">
                                   <span className="line-through text-elegant-text-muted mr-2 font-mono text-xs">
                                     {formatPrice(selectedService.price)}
@@ -1768,7 +2013,7 @@ export default function ClientDashboard({
                 }`}
               >
                 <Clock className="h-3.5 w-3.5" />
-                <span>Pendientes</span>
+                <span>Activas</span>
                 <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-mono ${
                   appointmentsTab === "active" ? "bg-black/30 text-black font-extrabold" : "bg-amber-500/20 text-amber-300"
                 }`}>
@@ -1817,7 +2062,7 @@ export default function ClientDashboard({
                         {/* Cabecera cita: Status */}
                         <div className="flex justify-between items-center gap-2">
                           <span className="font-mono font-bold text-white bg-elegant-card px-2 py-0.5 rounded-lg border border-elegant-border text-xs">
-                            {app.time}
+                            {formatTime(app.time, config?.timeFormat)}
                           </span>
 
                           {app.status === "pending" && (
@@ -1912,7 +2157,7 @@ export default function ClientDashboard({
                         {/* Cabecera status */}
                         <div className="flex justify-between items-center gap-2">
                           <span className="font-mono font-bold text-neutral-300 bg-black/40 px-2 py-0.5 rounded-lg border border-elegant-border text-[11px]">
-                            {app.time}
+                            {formatTime(app.time, config?.timeFormat)}
                           </span>
 
                           {app.status === "completed" && (
@@ -2103,6 +2348,42 @@ export default function ClientDashboard({
                     <h3 className="text-base font-bold text-white font-sans">{loggedClient.name}</h3>
                     <p className="text-xs text-elegant-text-muted mt-0.5 font-mono">{loggedClient.email}</p>
                     <p className="text-[11px] text-elegant-text-muted mt-0.5 font-mono">{loggedClient.phone}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-amber-300 font-mono">
+                      <span>🎂 Cumpleaños:</span>
+                      <strong>
+                        {loggedClient.birthDate
+                          ? loggedClient.birthDate.split("-").reverse().join("/")
+                          : "Sin registrar"}
+                      </strong>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingBirthDate(!editingBirthDate);
+                          setUserBirthDateInput(loggedClient.birthDate || "");
+                        }}
+                        className="ml-1 text-[10px] text-amber-400 hover:text-amber-200 underline cursor-pointer font-sans font-bold"
+                      >
+                        {loggedClient.birthDate ? "Modificar" : "+ Añadir"}
+                      </button>
+                    </div>
+
+                    {editingBirthDate && (
+                      <div className="mt-2 flex items-center gap-2 bg-black/40 p-2 rounded-xl border border-amber-500/40">
+                        <input
+                          type="date"
+                          value={userBirthDateInput}
+                          onChange={(e) => setUserBirthDateInput(e.target.value)}
+                          className="px-2.5 py-1.5 bg-elegant-sub border border-elegant-border rounded-lg text-xs text-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleSaveProfileBirthDate}
+                          className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs rounded-lg cursor-pointer transition-colors shadow-xs"
+                        >
+                          Guardar
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -2303,7 +2584,7 @@ export default function ClientDashboard({
                                 <div className="space-y-1">
                                   <p className="font-bold text-white">{app.serviceName}</p>
                                   <p className="text-[10px] text-elegant-text-muted">
-                                    {formatDateLabel(app.date).full} • {app.time} • {app.barberName}
+                                    {formatDateLabel(app.date).full} • {formatTime(app.time, config?.timeFormat)} • {app.barberName}
                                   </p>
                                   <span className="text-[10px] text-elegant-gold font-semibold">A pagar: {formatPrice(app.price)}</span>
                                 </div>
@@ -2337,7 +2618,7 @@ export default function ClientDashboard({
                                 <div className="space-y-1">
                                   <p className="font-bold text-white">{app.serviceName}</p>
                                   <p className="text-[10px] text-elegant-text-muted">
-                                    {formatDateLabel(app.date).full} • {app.time} • {app.barberName}
+                                    {formatDateLabel(app.date).full} • {formatTime(app.time, config?.timeFormat)} • {app.barberName}
                                   </p>
                                   <span className="text-[10px] text-elegant-gold font-semibold">Monto: {formatPrice(app.price)}</span>
                                 </div>
@@ -2432,7 +2713,20 @@ export default function ClientDashboard({
                   </div>
                   
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-elegant-text-muted block uppercase">Contraseña</label>
+                    <div className="flex justify-between items-center">
+                      <label className="text-[10px] font-bold text-elegant-text-muted block uppercase">Contraseña</label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAuthMode("forgot");
+                          setAuthError("");
+                          setAuthSuccess("");
+                        }}
+                        className="text-[10px] text-amber-400 hover:underline font-semibold cursor-pointer"
+                      >
+                        🔑 ¿Olvidaste tu clave?
+                      </button>
+                    </div>
                     <input
                       type="password"
                       required
@@ -2452,7 +2746,7 @@ export default function ClientDashboard({
                     <ArrowRight className="h-4 w-4" />
                   </button>
                 </form>
-              ) : (
+              ) : authMode === "register" ? (
                 <form onSubmit={handleClientRegisterSubmit} className="space-y-4 text-xs">
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-elegant-text-muted block uppercase">Nombre Completo</label>
@@ -2491,16 +2785,29 @@ export default function ClientDashboard({
                     </div>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-elegant-text-muted block uppercase">Contraseña</label>
-                    <input
-                      type="password"
-                      required
-                      value={authPassword}
-                      onChange={(e) => setAuthPassword(e.target.value)}
-                      placeholder="Mínimo 6 caracteres"
-                      className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-xs focus:ring-1 focus:ring-elegant-gold bg-elegant-sub text-white placeholder-neutral-500"
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-amber-300 block uppercase flex items-center gap-1">
+                        <span>🎂 Fecha de Nacimiento / Cumpleaños</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={authBirthDate}
+                        onChange={(e) => setAuthBirthDate(e.target.value)}
+                        className="w-full px-3 py-2.5 border border-amber-500/40 rounded-xl text-xs focus:ring-1 focus:ring-amber-500 bg-elegant-sub text-white placeholder-neutral-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-elegant-text-muted block uppercase">Contraseña</label>
+                      <input
+                        type="password"
+                        required
+                        value={authPassword}
+                        onChange={(e) => setAuthPassword(e.target.value)}
+                        placeholder="Mínimo 6 caracteres"
+                        className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-xs focus:ring-1 focus:ring-elegant-gold bg-elegant-sub text-white placeholder-neutral-500"
+                      />
+                    </div>
                   </div>
 
                   <button
@@ -2511,6 +2818,71 @@ export default function ClientDashboard({
                     {authLoading ? "Creando Cuenta..." : "Registrarme e Iniciar"}
                     <ArrowRight className="h-4 w-4" />
                   </button>
+                </form>
+              ) : (
+                /* Forgot Password Form */
+                <form onSubmit={handleClientResetPasswordSubmit} className="space-y-4 text-xs animate-fadeIn">
+                  <div className="p-3 bg-amber-950/30 border border-amber-500/30 rounded-2xl text-amber-200 text-xs leading-relaxed">
+                    🔑 <strong>Restablecimiento de Contraseña:</strong> Ingresa el correo electrónico registrado en tu cuenta y crea tu nueva contraseña.
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-elegant-text-muted block uppercase">Correo Electrónico Registrado *</label>
+                    <input
+                      type="email"
+                      required
+                      value={authEmail}
+                      onChange={(e) => setAuthEmail(e.target.value)}
+                      placeholder="correo@ejemplo.com"
+                      className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-xs focus:ring-1 focus:ring-elegant-gold bg-elegant-sub text-white placeholder-neutral-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-elegant-text-muted block uppercase">Número de Celular (Verificación opcional)</label>
+                    <input
+                      type="text"
+                      value={authPhone}
+                      onChange={(e) => setAuthPhone(e.target.value)}
+                      placeholder="Ej: +57 301 234 5678"
+                      className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-xs focus:ring-1 focus:ring-elegant-gold bg-elegant-sub text-white placeholder-neutral-500 font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-amber-300 block uppercase">Nueva Contraseña *</label>
+                    <input
+                      type="password"
+                      required
+                      value={authPassword}
+                      onChange={(e) => setAuthPassword(e.target.value)}
+                      placeholder="Escribe tu nueva clave"
+                      className="w-full px-3 py-2.5 border border-amber-500/50 rounded-xl text-xs focus:ring-1 focus:ring-amber-500 bg-elegant-sub text-white placeholder-neutral-500 font-mono"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    {authLoading ? "Restableciendo..." : "Restablecer mi Contraseña"}
+                    <Check className="h-4 w-4" />
+                  </button>
+
+                  <div className="text-center pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode("login");
+                        setAuthError("");
+                        setAuthSuccess("");
+                      }}
+                      className="text-xs text-neutral-400 hover:text-white font-bold underline cursor-pointer"
+                    >
+                      ← Volver a Iniciar Sesión
+                    </button>
+                  </div>
                 </form>
               )}
 

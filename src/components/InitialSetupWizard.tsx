@@ -43,6 +43,7 @@ export default function InitialSetupWizard({
   const [closeTime, setCloseTime] = useState(initialConfig.closeTime || "19:00");
   const [intervalMinutes, setIntervalMinutes] = useState(initialConfig.intervalMinutes || 30);
   const [workingDays, setWorkingDays] = useState<number[]>(initialConfig.workingDays || [1, 2, 3, 4, 5, 6]);
+  const [timeFormat, setTimeFormat] = useState<'12h' | '24h'>(initialConfig.timeFormat || "12h");
 
   // Step 2: Services states
   const [services, setServices] = useState<Service[]>(initialServices);
@@ -191,6 +192,7 @@ export default function InitialSetupWizard({
           closeTime,
           workingDays: Array.from(new Set<number>(workingDays)).sort((a: number, b: number) => a - b),
           intervalMinutes: Number(intervalMinutes),
+          timeFormat,
           needsSetup: false
         },
         services,
@@ -324,7 +326,7 @@ export default function InitialSetupWizard({
                     />
                   </div>
 
-                  <div className="space-y-1 md:col-span-2">
+                  <div className="space-y-1">
                     <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Hora de Cierre</label>
                     <input
                       type="time"
@@ -333,6 +335,18 @@ export default function InitialSetupWizard({
                       onChange={(e) => setCloseTime(e.target.value)}
                       className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-sm md:text-xs bg-elegant-sub text-white focus:ring-1 focus:ring-elegant-gold"
                     />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-amber-300 uppercase block">Formato de Horas</label>
+                    <select
+                      value={timeFormat}
+                      onChange={(e) => setTimeFormat(e.target.value as '12h' | '24h')}
+                      className="w-full px-3 py-2.5 border border-amber-500/40 rounded-xl text-sm md:text-xs bg-elegant-sub text-white focus:ring-1 focus:ring-amber-500 h-10 font-medium"
+                    >
+                      <option value="12h">☀️ Normal (12 Horas AM/PM)</option>
+                      <option value="24h">🎖️ Militar (24 Horas)</option>
+                    </select>
                   </div>
                 </div>
 

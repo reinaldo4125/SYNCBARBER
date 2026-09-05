@@ -47,7 +47,7 @@ export default function AutoReagendaModal({
   const [bookedOptionIndex, setBookedOptionIndex] = useState<number | null>(null);
 
   // Cycle calculation
-  const cycleDays = client?.avgCutCycleDays || 21;
+  const cycleDays = client?.avgCutCycleDays || 15;
   const clientName = client?.name || completedAppointment.clientName || "Cliente";
   const clientPhone = client?.phone || completedAppointment.clientPhone || "";
 

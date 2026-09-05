@@ -45,6 +45,7 @@ export default function SalonSettings({
   const [closeTime, setCloseTime] = useState(config.closeTime);
   const [workingDays, setWorkingDays] = useState<number[]>(config.workingDays);
   const [intervalMinutes, setIntervalMinutes] = useState(config.intervalMinutes);
+  const [timeFormat, setTimeFormat] = useState<'12h' | '24h'>(config.timeFormat || '12h');
   const [noShowPenaltyAmount, setNoShowPenaltyAmount] = useState<number>(config.noShowPenaltyAmount !== undefined ? config.noShowPenaltyAmount : 10000);
   const [isSavingPenalty, setIsSavingPenalty] = useState(false);
   const [penaltySuccess, setPenaltySuccess] = useState(false);
@@ -79,6 +80,7 @@ export default function SalonSettings({
     if (config.closeTime) setCloseTime(config.closeTime);
     if (config.workingDays) setWorkingDays(config.workingDays);
     if (config.intervalMinutes) setIntervalMinutes(config.intervalMinutes);
+    if (config.timeFormat) setTimeFormat(config.timeFormat);
     if (config.noShowPenaltyAmount !== undefined) setNoShowPenaltyAmount(config.noShowPenaltyAmount);
   }, [config]);
 
@@ -98,6 +100,7 @@ export default function SalonSettings({
   const [newServiceDuration, setNewServiceDuration] = useState("30");
   const [newServiceCategory, setNewServiceCategory] = useState<string>(serviceCategories[0]?.id || "cabello");
   const [newServiceDescription, setNewServiceDescription] = useState("");
+  const [newServiceAllowReward, setNewServiceAllowReward] = useState(true);
   const [serviceError, setServiceError] = useState("");
   const [isSavingService, setIsSavingService] = useState(false);
 
@@ -108,6 +111,7 @@ export default function SalonSettings({
   const [editDuration, setEditDuration] = useState("");
   const [editCategory, setEditCategory] = useState<string>("cabello");
   const [editDescription, setEditDescription] = useState("");
+  const [editAllowReward, setEditAllowReward] = useState(true);
 
   // Categories Manager State
   const [showCategoryManager, setShowCategoryManager] = useState(false);
@@ -260,6 +264,7 @@ export default function SalonSettings({
         closeTime,
         workingDays: Array.from(new Set<number>(workingDays)).sort((a: number, b: number) => a - b),
         intervalMinutes: Number(intervalMinutes),
+        timeFormat,
       });
       setConfigSuccess(true);
       if (triggerToast) {
@@ -342,6 +347,7 @@ export default function SalonSettings({
         duration: Number(newServiceDuration),
         category: newServiceCategory,
         description: newServiceDescription,
+        allowRewardRedemption: newServiceAllowReward,
       });
 
       // Clear new service states
@@ -349,6 +355,7 @@ export default function SalonSettings({
       setNewServicePrice("");
       setNewServiceDuration("30");
       setNewServiceDescription("");
+      setNewServiceAllowReward(true);
       setShowAddForm(false);
     } catch (err: any) {
       setServiceError(err.message || "Error al crear el servicio.");
@@ -365,6 +372,7 @@ export default function SalonSettings({
     setEditDuration(service.duration.toString());
     setEditCategory(service.category);
     setEditDescription(service.description);
+    setEditAllowReward(service.allowRewardRedemption !== false);
   };
 
   // Save changes of edited service
@@ -376,6 +384,7 @@ export default function SalonSettings({
         duration: Number(editDuration),
         category: editCategory,
         description: editDescription,
+        allowRewardRedemption: editAllowReward,
       });
       setEditingServiceId(null);
     } catch (err) {
@@ -464,18 +473,36 @@ export default function SalonSettings({
             </div>
 
             {/* Intervalo entre Turnos */}
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Intervalo Citas (Minutos)</label>
-              <select
-                value={intervalMinutes}
-                onChange={(e) => setIntervalMinutes(Number(e.target.value))}
-                className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-sm md:text-xs bg-elegant-sub text-white focus:ring-1 focus:ring-elegant-gold h-10"
-              >
-                <option value="15" className="bg-elegant-card text-white">Cada 15 minutos</option>
-                <option value="30" className="bg-elegant-card text-white">Cada 30 minutos (Recomendado)</option>
-                <option value="45" className="bg-elegant-card text-white">Cada 45 minutos</option>
-                <option value="60" className="bg-elegant-card text-white">Cada 60 minutos</option>
-              </select>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Intervalo Citas (Minutos)</label>
+                <select
+                  value={intervalMinutes}
+                  onChange={(e) => setIntervalMinutes(Number(e.target.value))}
+                  className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-sm md:text-xs bg-elegant-sub text-white focus:ring-1 focus:ring-elegant-gold h-10 font-medium"
+                >
+                  <option value="15" className="bg-elegant-card text-white">Cada 15 minutos</option>
+                  <option value="30" className="bg-elegant-card text-white">Cada 30 minutos (Recomendado)</option>
+                  <option value="45" className="bg-elegant-card text-white">Cada 45 minutos</option>
+                  <option value="60" className="bg-elegant-card text-white">Cada 60 minutos</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-amber-300 uppercase block">Formato de Horas</label>
+                <select
+                  value={timeFormat}
+                  onChange={(e) => setTimeFormat(e.target.value as '12h' | '24h')}
+                  className="w-full px-3 py-2.5 border border-amber-500/40 rounded-xl text-sm md:text-xs bg-elegant-sub text-white focus:ring-1 focus:ring-amber-500 h-10 font-medium"
+                >
+                  <option value="12h" className="bg-elegant-card text-white">
+                    ☀️ Normal (12 Horas AM / PM)
+                  </option>
+                  <option value="24h" className="bg-elegant-card text-white">
+                    🎖️ Militar (24 Horas)
+                  </option>
+                </select>
+              </div>
             </div>
 
             {/* Días laborables */}
@@ -1141,6 +1168,24 @@ export default function SalonSettings({
                 />
               </div>
 
+              {/* Opción de Canje por Recompensas / Regalo */}
+              <div className="bg-amber-950/20 border border-amber-500/30 p-3 rounded-xl flex items-center justify-between gap-2">
+                <div className="space-y-0.5">
+                  <label className="text-xs font-bold text-amber-300 block">
+                    🎁 Permitir canjear como Regalo Gratis (Puntos de Fidelización o Cumpleaños)
+                  </label>
+                  <p className="text-[10px] text-neutral-400">
+                    Si está activo, los clientes podrán elegir este servicio gratis al redimir 5 sellos o su corte de cumpleaños.
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={newServiceAllowReward}
+                  onChange={(e) => setNewServiceAllowReward(e.target.checked)}
+                  className="h-4 w-4 rounded border-amber-500 text-amber-500 focus:ring-amber-500 cursor-pointer"
+                />
+              </div>
+
               <div className="flex justify-end gap-2 pt-1">
                 <button
                   type="button"
@@ -1220,6 +1265,18 @@ export default function SalonSettings({
                         rows={2}
                       />
                     </div>
+                    <div className="flex items-center gap-2 bg-black/30 p-2.5 rounded-lg border border-amber-500/30">
+                      <input
+                        type="checkbox"
+                        id={`edit-reward-${s.id}`}
+                        checked={editAllowReward}
+                        onChange={(e) => setEditAllowReward(e.target.checked)}
+                        className="h-3.5 w-3.5 text-amber-500 rounded border-amber-500 focus:ring-amber-500 cursor-pointer"
+                      />
+                      <label htmlFor={`edit-reward-${s.id}`} className="text-[11px] text-amber-300 font-medium cursor-pointer">
+                        🎁 Permitir canjear como Regalo Gratis (Puntos de Fidelidad / Cumpleaños)
+                      </label>
+                    </div>
                     <div className="flex justify-end gap-1.5 pt-1">
                       <button
                         onClick={() => setEditingServiceId(null)}
@@ -1238,14 +1295,25 @@ export default function SalonSettings({
                 );
               }
 
+              const isRewardAllowed = s.allowRewardRedemption !== false;
+
               return (
                 <div key={s.id} className="border border-elegant-border rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-elegant-sub/50 hover:border-neutral-700 transition-colors">
                   <div className="space-y-1 flex-1">
-                    <div className="flex items-center space-x-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <h4 className="font-bold text-xs text-white">{s.name}</h4>
                       <span className="text-[8px] bg-elegant-card text-elegant-text-muted border border-elegant-border font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
                         {serviceCategories.find(c => c.id === s.category)?.name || s.category}
                       </span>
+                      {isRewardAllowed ? (
+                        <span className="text-[9px] bg-amber-950/60 text-amber-300 border border-amber-500/40 font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1">
+                          🎁 Canjeable como Regalo
+                        </span>
+                      ) : (
+                        <span className="text-[9px] bg-rose-950/60 text-rose-300 border border-rose-800/40 font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                          🚫 No Canjeable Gratis
+                        </span>
+                      )}
                     </div>
                     {s.description && <p className="text-[10px] text-elegant-text-muted leading-relaxed">{s.description}</p>}
                     <div className="flex space-x-4 pt-1 text-[10px] text-elegant-text-muted font-mono">

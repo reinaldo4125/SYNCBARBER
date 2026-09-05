@@ -28,7 +28,8 @@ import {
   AlertTriangle,
   TrendingDown,
   Send,
-  Filter
+  Filter,
+  Edit
 } from "lucide-react";
 
 interface ClientManagerProps {
@@ -62,6 +63,11 @@ export default function ClientManager({
 
   // Edit states for individual clients
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
+  const [editName, setEditName] = useState<string>("");
+  const [editPhone, setEditPhone] = useState<string>("");
+  const [editEmail, setEditEmail] = useState<string>("");
+  const [editBirthDate, setEditBirthDate] = useState<string>("");
+  const [editPassword, setEditPassword] = useState<string>("");
   const [editMembershipId, setEditMembershipId] = useState<string>("");
   const [editLoyaltyPoints, setEditLoyaltyPoints] = useState<number>(0);
   const [editLoading, setEditLoading] = useState(false);
@@ -73,6 +79,7 @@ export default function ClientManager({
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [newEmail, setNewEmail] = useState("");
+  const [newBirthDate, setNewBirthDate] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newMembershipId, setNewMembershipId] = useState("");
   const [newLoyaltyPoints, setNewLoyaltyPoints] = useState<number>(1);
@@ -87,6 +94,7 @@ export default function ClientManager({
     setNewName("");
     setNewPhone("");
     setNewEmail("");
+    setNewBirthDate("");
     setNewMembershipId("");
     setNewLoyaltyPoints(1);
     setFormError("");
@@ -112,6 +120,7 @@ export default function ClientManager({
           name: newName,
           phone: newPhone,
           email: newEmail,
+          birthDate: newBirthDate || undefined,
           password: newPassword,
           membershipId: newMembershipId || undefined,
           loyaltyPoints: newLoyaltyPoints,
@@ -135,6 +144,11 @@ export default function ClientManager({
 
   const handleStartEdit = (client: ClientAccount) => {
     setEditingClientId(client.id);
+    setEditName(client.name || "");
+    setEditPhone(client.phone || "");
+    setEditEmail(client.email || "");
+    setEditBirthDate(client.birthDate || "");
+    setEditPassword(client.password || "");
     setEditMembershipId(client.membershipId || "");
     setEditLoyaltyPoints(client.loyaltyPoints || 0);
     setErrorMsg("");
@@ -142,6 +156,10 @@ export default function ClientManager({
   };
 
   const handleSaveEdit = async (client: ClientAccount) => {
+    if (!editName || !editPhone) {
+      setErrorMsg("El nombre y teléfono del cliente son obligatorios.");
+      return;
+    }
     setEditLoading(true);
     setErrorMsg("");
     setSuccessMsg("");
@@ -149,11 +167,16 @@ export default function ClientManager({
       const selectedPlan = editMembershipId ? editMembershipId : null;
       const isActive = Boolean(selectedPlan);
       await onUpdateClient(client.id, {
+        name: editName,
+        phone: editPhone,
+        email: editEmail,
+        birthDate: editBirthDate || undefined,
+        password: editPassword.trim() ? editPassword.trim() : undefined,
         membershipId: selectedPlan as any,
         membershipActive: isActive,
         loyaltyPoints: editLoyaltyPoints,
       });
-      setSuccessMsg(`¡Membresía y datos de ${client.name} guardados con éxito!`);
+      setSuccessMsg(`¡Información del cliente "${editName}" guardada con éxito!`);
       setEditingClientId(null);
       setTimeout(() => setSuccessMsg(""), 4000);
     } catch (err: any) {
@@ -350,6 +373,18 @@ export default function ClientManager({
                 onChange={(e) => setNewEmail(e.target.value)}
                 placeholder="Ej. carlos@correo.com"
                 className="w-full px-3.5 py-2.5 border border-elegant-border rounded-xl text-xs focus:ring-1 focus:ring-elegant-gold bg-elegant-sub text-white placeholder-neutral-500"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-amber-300 uppercase flex items-center gap-1">
+                <span>🎂 Fecha de Nacimiento</span>
+              </label>
+              <input 
+                type="date"
+                value={newBirthDate}
+                onChange={(e) => setNewBirthDate(e.target.value)}
+                className="w-full px-3.5 py-2.5 border border-amber-500/40 rounded-xl text-xs focus:ring-1 focus:ring-amber-500 bg-elegant-sub text-white placeholder-neutral-500"
               />
             </div>
           </div>
@@ -611,6 +646,24 @@ export default function ClientManager({
                           <h4 className="font-bold text-xs md:text-sm text-white leading-none">
                             {client.name}
                           </h4>
+                          {/* Badge de Cumpleaños */}
+                          {(() => {
+                            if (!client.birthDate) return null;
+                            const currentM = new Date().toISOString().substring(5, 7);
+                            let cM = "";
+                            if (client.birthDate.includes("-")) {
+                              const parts = client.birthDate.split("-");
+                              cM = parts.length === 3 ? parts[1] : parts[0];
+                            }
+                            if (cM === currentM) {
+                              return (
+                                <span className="bg-gradient-to-r from-purple-950 to-amber-950 border border-amber-500/60 text-amber-300 text-[10px] px-2 py-0.5 rounded-full font-extrabold flex items-center gap-1 shadow-xs">
+                                  🎂 CUMPLEAÑOS ESTE MES
+                                </span>
+                              );
+                            }
+                            return null;
+                          })()}
                           {/* Badge de Retención */}
                           <span className={`text-[9px] px-2 py-0.5 rounded-full font-extrabold border ${retention.badgeBgClass}`}>
                             {retention.statusLabel} (hace {retention.daysSinceLastCut}d)
@@ -625,6 +678,10 @@ export default function ClientManager({
                           <span className="flex items-center gap-0.5">
                             <Mail className="h-3 w-3" />
                             {client.email}
+                          </span>
+                          <span className="flex items-center gap-0.5 text-amber-300 font-mono font-medium">
+                            <Gift className="h-3 w-3 text-amber-400 shrink-0" />
+                            🎂 {client.birthDate ? client.birthDate.split("-").reverse().join("/") : "Cumple: Sin registrar"}
                           </span>
                         </div>
                       </div>
@@ -653,6 +710,27 @@ export default function ClientManager({
                         <span className="font-semibold font-mono">{client.loyaltyPoints || 0} sellos</span>
                       </div>
 
+                      {/* Botón Editar Cliente */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isEditing) {
+                            setEditingClientId(null);
+                          } else {
+                            handleStartEdit(client);
+                          }
+                        }}
+                        className={`px-3 py-1.5 border rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs ${
+                          isEditing
+                            ? "bg-amber-500 text-black border-amber-400"
+                            : "bg-amber-950/40 border-amber-500/40 hover:bg-amber-900/50 text-amber-300"
+                        }`}
+                        title="Editar Nombre, Teléfono, Correo, Cumpleaños y Membresía del Cliente"
+                      >
+                        <Edit className="h-3.5 w-3.5" />
+                        <span>{isEditing ? "Cerrar Edición" : "Editar Cliente"}</span>
+                      </button>
+
                       {/* Botón expandir Ficha Visual & Historial */}
                       <button
                         onClick={() => setExpandedClientId(isExpanded ? null : client.id)}
@@ -664,6 +742,169 @@ export default function ClientManager({
                       </button>
                     </div>
                   </div>
+
+                  {/* PANEL DE EDICIÓN COMPLETA DE CLIENTE */}
+                  {isEditing && (
+                    <div className="mt-4 p-4 rounded-2xl bg-black/80 border-2 border-amber-500/70 space-y-4 animate-fadeIn shadow-xl">
+                      <div className="flex items-center justify-between border-b border-amber-500/30 pb-2">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-amber-300 flex items-center gap-2">
+                          <Edit className="h-4 w-4 text-amber-400" />
+                          Editar Datos del Cliente: <span className="text-white font-sans font-extrabold">{client.name}</span>
+                        </h4>
+                        <button
+                          type="button"
+                          onClick={() => setEditingClientId(null)}
+                          className="text-neutral-400 hover:text-white text-xs font-bold cursor-pointer"
+                        >
+                          ✕ Cerrar
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-neutral-300 uppercase block">Nombre Completo *</label>
+                          <input
+                            type="text"
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            className="w-full px-3 py-2 bg-elegant-sub border border-elegant-border rounded-xl text-white focus:ring-1 focus:ring-amber-500"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-neutral-300 uppercase block">Teléfono / WhatsApp *</label>
+                          <input
+                            type="text"
+                            value={editPhone}
+                            onChange={(e) => setEditPhone(e.target.value)}
+                            className="w-full px-3 py-2 bg-elegant-sub border border-elegant-border rounded-xl text-white font-mono focus:ring-1 focus:ring-amber-500"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-neutral-300 uppercase block">Correo Electrónico</label>
+                          <input
+                            type="email"
+                            value={editEmail}
+                            onChange={(e) => setEditEmail(e.target.value)}
+                            className="w-full px-3 py-2 bg-elegant-sub border border-elegant-border rounded-xl text-white font-mono focus:ring-1 focus:ring-amber-500"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-amber-300 uppercase block flex items-center justify-between">
+                            <span>🔑 Contraseña / Clave</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const randPass = Math.floor(100000 + Math.random() * 900000).toString();
+                                setEditPassword(randPass);
+                              }}
+                              className="text-[9px] text-amber-400 hover:underline font-bold cursor-pointer"
+                            >
+                              ⚡ Generar Clave
+                            </button>
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={editPassword}
+                              onChange={(e) => setEditPassword(e.target.value)}
+                              placeholder="Nueva clave"
+                              className="w-full px-3 py-2 bg-elegant-sub border border-elegant-border rounded-xl text-white font-mono focus:ring-1 focus:ring-amber-500"
+                            />
+                            {editPassword && editPhone && (
+                              <a
+                                href={`https://wa.me/${editPhone.replace(/\D/g, "")}?text=${encodeURIComponent(`Hola ${editName}, tu clave para ingresar a tu cuenta en la barbería ha sido actualizada. Tu nueva contraseña es: ${editPassword}`)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-2.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shrink-0 flex items-center gap-1 cursor-pointer"
+                                title="Enviar clave por WhatsApp"
+                              >
+                                <Send className="h-3.5 w-3.5" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-amber-300 uppercase block flex items-center gap-1">
+                            <span>🎂 Fecha de Nacimiento / Cumpleaños</span>
+                          </label>
+                          <input
+                            type="date"
+                            value={editBirthDate}
+                            onChange={(e) => setEditBirthDate(e.target.value)}
+                            className="w-full px-3 py-2 bg-elegant-sub border border-elegant-border rounded-xl text-white focus:ring-1 focus:ring-amber-500"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-neutral-300 uppercase block">Nivel de Membresía</label>
+                          <select
+                            value={editMembershipId}
+                            onChange={(e) => setEditMembershipId(e.target.value)}
+                            className="w-full px-3 py-2 bg-elegant-sub border border-elegant-border rounded-xl text-white focus:ring-1 focus:ring-amber-500"
+                          >
+                            <option value="">Sin Membresía</option>
+                            {memberships.map((m) => (
+                              <option key={m.id} value={m.id} className="bg-elegant-card text-white">
+                                {m.name} ({m.discountPercent}% descuento)
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-neutral-300 uppercase block">Sellos / Puntos Acumulados</label>
+                          <div className="flex items-center gap-2 pt-0.5">
+                            <button
+                              type="button"
+                              onClick={() => setEditLoyaltyPoints(Math.max(0, editLoyaltyPoints - 1))}
+                              className="px-3 py-1.5 bg-elegant-sub border border-elegant-border rounded-lg text-white hover:bg-elegant-card cursor-pointer font-mono font-bold"
+                            >
+                              -
+                            </button>
+                            <span className="w-12 text-center font-bold font-mono text-amber-300 text-sm">
+                              {editLoyaltyPoints} sellos
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setEditLoyaltyPoints(editLoyaltyPoints + 1)}
+                              className="px-3 py-1.5 bg-elegant-sub border border-elegant-border rounded-lg text-white hover:bg-elegant-card cursor-pointer font-mono font-bold"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end gap-2 pt-2 border-t border-amber-500/20">
+                        <button
+                          type="button"
+                          onClick={() => setEditingClientId(null)}
+                          className="px-4 py-2 border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl text-xs font-bold cursor-pointer"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSaveEdit(client)}
+                          disabled={editLoading}
+                          className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded-xl text-xs cursor-pointer disabled:opacity-50 transition-all shadow-md active:scale-95 flex items-center gap-1.5"
+                        >
+                          {editLoading ? (
+                            <span>Guardando...</span>
+                          ) : (
+                            <>
+                              <Check className="h-4 w-4" />
+                              <span>Guardar Cambios</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* ALERTA Y BOTÓN DE EXONERACIÓN RÁPIDA DE MULTA POR INASISTENCIA */}
                   {(client.pendingPenalty || 0) > 0 && (

@@ -93,7 +93,7 @@ export default function App() {
   // Application Roles
   const [currentRole, setCurrentRole] = useState<"client" | "admin" | "barber" | "login" | "developer" | "syncbarber" | "syncbarber">(() => {
     const params = new URLSearchParams(window.location.search);
-    const urlSalonId = params.get("salonId") || params.get("salon_id");
+    const urlSalonId = params.get("salonId") || params.get("salon_id") || params.get("tenant") || params.get("tenantId");
     const activeId = urlSalonId || localStorage.getItem("active_tenant_id") || "bella-barba";
     return activeId !== "bella-barba" ? "client" : "syncbarber";
   });
@@ -111,7 +111,7 @@ export default function App() {
 
   const [activeTenantId, setActiveTenantId] = useState<string>(() => {
     const params = new URLSearchParams(window.location.search);
-    const urlSalonId = params.get("salonId") || params.get("salon_id");
+    const urlSalonId = params.get("salonId") || params.get("salon_id") || params.get("tenant") || params.get("tenantId");
     if (urlSalonId) {
       localStorage.setItem("active_tenant_id", urlSalonId);
       return urlSalonId;

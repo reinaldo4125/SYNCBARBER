@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Appointment, Barber, Service, SalonConfig, ClientAccount } from "../types";
+import { formatTime } from "../utils/formatters";
 import { 
   Calendar as CalendarIcon, 
   ChevronLeft, 
@@ -583,7 +584,7 @@ export default function InteractiveCalendar({
                   {/* Row Hour */}
                   <div className="col-span-2 py-5 px-3 flex items-center justify-center bg-elegant-sub/30 font-mono text-xs font-extrabold text-white">
                     <Clock className="h-3.5 w-3.5 mr-1.5 text-elegant-gold" />
-                    {time}
+                    {formatTime(time, config?.timeFormat)}
                   </div>
 
                   {/* Columns */}
@@ -630,6 +631,11 @@ export default function InteractiveCalendar({
                                   {app.clientName}
                                 </p>
                               </div>
+                              {app.isBirthdayBenefit && (
+                                <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] px-1.5 py-0.5 rounded font-bold block truncate">
+                                  🎂 Regalo Cumpleaños
+                                </span>
+                              )}
                               <p className="text-[10px] text-elegant-text-muted leading-tight line-clamp-1">
                                 {app.serviceName}
                               </p>
@@ -689,7 +695,7 @@ export default function InteractiveCalendar({
                   {/* Hour */}
                   <div className="py-6 px-3 flex items-center justify-center bg-elegant-sub/30 font-mono text-xs font-extrabold text-white">
                     <Clock className="h-3.5 w-3.5 mr-1 text-elegant-gold" />
-                    {time}
+                    {formatTime(time, config?.timeFormat)}
                   </div>
 
                   {/* Day cells */}
@@ -843,7 +849,7 @@ export default function InteractiveCalendar({
                         }`}
                       >
                         <span className="truncate">
-                          <span className="font-mono font-bold text-elegant-gold mr-0.5">{app.time}</span>
+                          <span className="font-mono font-bold text-elegant-gold mr-0.5">{formatTime(app.time, config?.timeFormat)}</span>
                           {app.clientName}
                         </span>
                         <GripVertical className="h-2.5 w-2.5 text-elegant-text-muted opacity-0 group-hover:opacity-60 shrink-0" />

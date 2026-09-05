@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Barber, SalonConfig } from "../types";
+import PushNotificationBanner from "./PushNotificationBanner";
 import { 
   Users, 
   UserPlus, 
@@ -91,6 +92,8 @@ export default function BarberManager({
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [phone, setPhone] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
   const [specialties, setSpecialties] = useState<string[]>(["cabello"]);
   const [photoUrl, setPhotoUrl] = useState("");
   
@@ -104,6 +107,8 @@ export default function BarberManager({
     setName("");
     setUsername("");
     setPassword("");
+    setPhone("");
+    setWhatsapp("");
     setSpecialties(["cabello"]);
     setPhotoUrl("");
     setEditingBarber(null);
@@ -175,6 +180,8 @@ export default function BarberManager({
         name,
         username,
         password,
+        phone,
+        whatsapp: whatsapp || phone,
         specialties,
         photoUrl: photoUrl.trim(),
         avatarUrl: photoUrl.trim()
@@ -206,6 +213,8 @@ export default function BarberManager({
         name: editingBarber.name,
         username: editingBarber.username,
         password: editingBarber.password || undefined, // only update if filled
+        phone: editingBarber.phone,
+        whatsapp: editingBarber.whatsapp || editingBarber.phone,
         isActive: editingBarber.isActive,
         specialties: editingBarber.specialties,
         photoUrl: (editingBarber.photoUrl || editingBarber.avatarUrl || "").trim(),
@@ -270,6 +279,11 @@ export default function BarberManager({
           <p className="text-xs text-elegant-text-muted mt-0.5">
             Crea cuentas de acceso de barberos, edita especialidades y controla su estado de actividad.
           </p>
+        </div>
+
+        {/* Push & WhatsApp Notification Settings Banner */}
+        <div className="w-full">
+          <PushNotificationBanner config={config} />
         </div>
         
         {!showAddForm && !editingBarber && (
@@ -349,7 +363,7 @@ export default function BarberManager({
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold uppercase tracking-wider text-elegant-text-muted block">Nombre Completo</label>
               <input
@@ -381,6 +395,19 @@ export default function BarberManager({
                 placeholder="Mínimo 3 caracteres"
                 className="w-full px-3 py-2 bg-elegant-sub border border-elegant-border text-white text-xs rounded-xl focus:outline-none focus:border-elegant-gold"
                 required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">Celular / WhatsApp (Alertas Citas)</label>
+              <input
+                type="text"
+                value={phone}
+                onChange={(e) => {
+                  setPhone(e.target.value);
+                  setWhatsapp(e.target.value);
+                }}
+                placeholder="Ej: +57 300 123 4567"
+                className="w-full px-3 py-2 bg-elegant-sub border border-emerald-500/40 text-white text-xs rounded-xl focus:outline-none focus:border-emerald-400 font-mono"
               />
             </div>
           </div>
@@ -532,7 +559,7 @@ export default function BarberManager({
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold uppercase tracking-wider text-elegant-text-muted block">Nombre</label>
               <input
@@ -554,12 +581,22 @@ export default function BarberManager({
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-elegant-text-muted block">Nueva Contraseña (Opcional)</label>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">Celular / WhatsApp</label>
+              <input
+                type="text"
+                value={editingBarber.phone || editingBarber.whatsapp || ""}
+                onChange={(e) => setEditingBarber({ ...editingBarber, phone: e.target.value, whatsapp: e.target.value })}
+                placeholder="Ej: +57 300 123 4567"
+                className="w-full px-3 py-2 bg-elegant-sub border border-emerald-500/40 text-white text-xs rounded-xl focus:outline-none focus:border-emerald-400 font-mono"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-elegant-text-muted block">Nueva Contraseña</label>
               <input
                 type="password"
                 value={editingBarber.password || ""}
                 onChange={(e) => setEditingBarber({ ...editingBarber, password: e.target.value })}
-                placeholder="Dejar vacío si no cambia"
+                placeholder="Sin cambios"
                 className="w-full px-3 py-2 bg-elegant-sub border border-elegant-border text-white text-xs rounded-xl focus:outline-none"
               />
             </div>

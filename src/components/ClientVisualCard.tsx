@@ -98,7 +98,7 @@ export default function ClientVisualCard({
   const [prefs, setPrefs] = useState<TechnicalPreferences>(initialPrefs);
   const [photos, setPhotos] = useState<HaircutPhoto[]>(client.galleryPhotos || []);
   const [internalNotes, setInternalNotes] = useState<string>(client.internalNotes || "");
-  const [avgCycleDays, setAvgCycleDays] = useState<number>(client.avgCutCycleDays || 21);
+  const [avgCycleDays, setAvgCycleDays] = useState<number>(client.avgCutCycleDays || 15);
 
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
@@ -245,6 +245,25 @@ export default function ClientVisualCard({
             <span>{saving ? "Guardando..." : "Guardar Ficha"}</span>
           </button>
         )}
+      </div>
+
+      {/* Info de Cliente Summary Bar */}
+      <div className="bg-elegant-sub/60 border border-elegant-border/60 p-3 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center justify-center font-bold font-mono shrink-0">
+            {client.name.slice(0, 2).toUpperCase()}
+          </div>
+          <div>
+            <h4 className="font-bold text-white">{client.name}</h4>
+            <p className="text-[11px] text-neutral-400 font-mono">{client.phone} | {client.email}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 font-mono text-amber-300 bg-black/30 px-3 py-1.5 rounded-xl border border-amber-500/20">
+          <span>🎂 Cumpleaños:</span>
+          <strong className="text-white">
+            {client.birthDate ? client.birthDate.split("-").reverse().join("/") : "Sin registrar"}
+          </strong>
+        </div>
       </div>
 
       {/* Messages */}
@@ -485,7 +504,7 @@ export default function ClientVisualCard({
             />
             <span className="text-xs text-elegant-text-muted">
               días entre cada visita <br />
-              <strong className="text-white text-[11px]">(Habitual: 15-21 días)</strong>
+              <strong className="text-white text-[11px]">(Habitual: 15 días)</strong>
             </span>
           </div>
         </div>

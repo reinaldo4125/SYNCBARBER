@@ -11,16 +11,47 @@ export interface VersionRelease {
   }[];
 }
 
-export const CURRENT_APP_VERSION = "v2.5.0";
-export const CURRENT_APP_BUILD = "2026.08.19-Enterprise";
-export const CURRENT_APP_TAGLINE = "SaaS Multi-Tenant Edition";
+export const CURRENT_APP_VERSION = "v2.6.0";
+export const CURRENT_APP_BUILD = "2026.09.04-Enterprise";
+export const CURRENT_APP_TAGLINE = "SaaS Multi-Tenant Edition • Formato de Horas & Autogestión de Clientes";
 
 export const APP_VERSION_HISTORY: VersionRelease[] = [
+  {
+    version: "v2.6.0",
+    name: "Formato de Horas 12H AM/PM & Autogestión de Clientes",
+    releaseDate: "2026-09-04",
+    isCurrent: true,
+    type: "minor",
+    highlights: [
+      "Configuración Global de Formato de Horas (12 Horas AM/PM vs 24 Horas Militar)",
+      "Recuperación y Restablecimiento de Contraseña para Clientes Finales",
+      "Gestión y Edición de Fichas de Clientes en el Panel Administrativo",
+      "Envío de Credenciales y Restablecimiento Directo por WhatsApp"
+    ],
+    details: [
+      {
+        category: "Configuración & Horarios",
+        items: [
+          "Soporte para formato de horas 12H AM/PM en Asistente de Configuración Inicial y Parámetros del Salón.",
+          "Visualización amigable de horas (ej. 8:00 AM, 2:30 PM, 6:00 PM) en botones de reserva, confirmaciones y agenda.",
+          "Mantenimiento interno de horas estandarizadas con conversión dinámica para clientes y barberos."
+        ]
+      },
+      {
+        category: "Gestión de Clientes & Seguridad",
+        items: [
+          "Flujo de recuperación de contraseña autónomo para clientes con verificación de datos.",
+          "Herramienta administrativa de generación y actualización de contraseñas de clientes.",
+          "Envío instantáneo de nuevas credenciales a clientes vía enlace directo a WhatsApp."
+        ]
+      }
+    ]
+  },
   {
     version: "v2.5.0",
     name: "Edición Enterprise & Gestión de Cupos Negociados",
     releaseDate: "2026-08-19",
-    isCurrent: true,
+    isCurrent: false,
     type: "minor",
     highlights: [
       "Gestión de Barberos Directa desde el Área de Desarrollo",

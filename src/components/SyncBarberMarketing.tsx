@@ -85,6 +85,18 @@ export default function SyncBarberMarketing({ onEnterApp, formatPrice }: SyncBar
       a: "SYNCBARBER detecta automáticamente la frecuencia con la que se corta cada cliente (ej. cada 15 o 21 días). Al ingresar a reservar, el sistema le sugiere directamente la fecha y hora sugerida de su próximo servicio para evitar que busque otra opción."
     },
     {
+      q: "¿Puedo cambiar el formato de hora de militar (24h) a hora normal (12h AM/PM)?",
+      a: "¡Sí, totalmente! Puedes configurar la preferencia de formato de hora desde la creación inicial de tu salón o en los Parámetros del Salón. Tus clientes verán las horas en formato 12 Horas con AM/PM (ejemplo: 8:00 AM, 2:30 PM, 6:00 PM) para una experiencia totalmente clara y cómoda."
+    },
+    {
+      q: "¿Qué sucede si a un cliente se le olvida la contraseña?",
+      a: "El cliente puede restablecer su clave directamente desde la pantalla de inicio ingresando su número de teléfono o correo electrónico. Además, desde el panel de administración puedes generar una nueva clave aleatoria para cualquier cliente y enviársela al instante mediante un enlace directo de WhatsApp."
+    },
+    {
+      q: "¿Puedo editar los datos de un cliente ya registrado en el sistema?",
+      a: "Sí, en la sección de Clientes del panel administrativo puedes modificar el nombre, teléfono y correo electrónico de cualquier cliente existente con guardado en tiempo real."
+    },
+    {
       q: "¿Puedo vender productos de barbería y hacer cierre de caja diario?",
       a: "¡Sí! El módulo de Punto de Venta (POS) te permite registrar ventas de ceras, aceites o bebidas junto con el corte. Al final de la jornada, generas el Reporte de Cierre de Caja con el desglose exacto de efectivo, transferencias y comisiones."
     }
@@ -217,19 +229,47 @@ export default function SyncBarberMarketing({ onEnterApp, formatPrice }: SyncBar
             </p>
           </div>
 
-          {/* Feature 5: Fidelización & Puntos VIP */}
-          <div className="bg-[#162237]/80 border border-[#1F314D] hover:border-amber-500/40 rounded-2xl p-5 space-y-3 transition-all group sm:col-span-2 lg:col-span-2">
+          {/* Feature 5: Formato de Hora Configurable (12H AM/PM) */}
+          <div className="bg-[#162237]/80 border border-[#1F314D] hover:border-amber-500/40 rounded-2xl p-5 space-y-3 transition-all group">
+            <div className="h-10 w-10 rounded-xl bg-amber-950/60 border border-amber-800/50 text-amber-400 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
+              <Clock className="h-5 w-5" />
+            </div>
+            <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center justify-between">
+              <span>Formato 12H AM/PM</span>
+              <span className="text-[9px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-mono">Configurable</span>
+            </h3>
+            <p className="text-[11px] text-gray-300 leading-relaxed">
+              Elige entre horario normal 12 Horas AM/PM (ej. 8:00 AM, 2:30 PM, 6:00 PM) o 24 Horas militar. Tus clientes reservan sin confusiones.
+            </p>
+          </div>
+
+          {/* Feature 6: Autogestión de Clientes & WhatsApp */}
+          <div className="bg-[#162237]/80 border border-[#1F314D] hover:border-amber-500/40 rounded-2xl p-5 space-y-3 transition-all group">
+            <div className="h-10 w-10 rounded-xl bg-emerald-950/60 border border-emerald-800/50 text-emerald-400 flex items-center justify-center font-bold group-hover:scale-110 transition-transform">
+              <Phone className="h-5 w-5" />
+            </div>
+            <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center justify-between">
+              <span>Recuperación & WhatsApp</span>
+              <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-mono">Autogestión</span>
+            </h3>
+            <p className="text-[11px] text-gray-300 leading-relaxed">
+              Módulo '¿Olvidaste tu contraseña?' para clientes y restablecimiento asistido desde el panel con envío directo a WhatsApp.
+            </p>
+          </div>
+
+          {/* Feature 7: Fidelización & Puntos VIP */}
+          <div className="bg-[#162237]/80 border border-[#1F314D] hover:border-amber-500/40 rounded-2xl p-5 space-y-3 transition-all group sm:col-span-2 lg:col-span-1">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-xl bg-purple-950/60 border border-purple-800/50 text-purple-400 flex items-center justify-center font-bold group-hover:scale-110 transition-transform shrink-0">
                 <Gift className="h-5 w-5" />
               </div>
               <div>
                 <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                  <span>Tarjeta VIP Digital & Puntos de Fidelización</span>
+                  <span>Tarjeta VIP Digital & Puntos</span>
                   <span className="text-[9px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full font-mono">Retención</span>
                 </h3>
                 <p className="text-[11px] text-gray-300 leading-relaxed mt-0.5">
-                  Los clientes acumulan visitas automáticamente con cada corte completado. Al completar su tarjeta, reciben recompensas o cortes gratis configurables.
+                  Los clientes acumulan visitas con cada corte completado y reciben recompensas configurables.
                 </p>
               </div>
             </div>

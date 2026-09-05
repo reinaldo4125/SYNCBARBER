@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Appointment, ClientAccount, Barber, HaircutPhoto, TechnicalPreferences, InventoryItem, Service } from "../types";
+import { formatTime } from "../utils/formatters";
 import { 
   Smartphone, 
   Scissors, 
@@ -38,6 +39,7 @@ import {
 } from "lucide-react";
 import RetentionEngineModal from "./RetentionEngineModal";
 import AutoReagendaModal from "./AutoReagendaModal";
+import PushNotificationBanner from "./PushNotificationBanner";
 
 interface ModoSillaPWAProps {
   appointments: Appointment[];
@@ -620,6 +622,12 @@ export default function ModoSillaPWA({
       {/* CONTENIDO PRINCIPAL MÓVIL */}
       <div className="flex-1 max-w-lg mx-auto w-full p-4 space-y-4 pb-28">
 
+        {/* Banner de Notificaciones Push & WhatsApp */}
+        <PushNotificationBanner 
+          config={config} 
+          barber={barbers.find(b => b.id === loggedBarberId)}
+        />
+
         {/* Global Announcements Banner */}
         {visibleAnnouncements.length > 0 && (
           <div className="space-y-2">
@@ -818,7 +826,7 @@ export default function ModoSillaPWA({
                   >
                     <div className="flex justify-between items-center mb-1">
                       <span className="text-[10px] font-mono font-bold text-amber-400 bg-black/40 px-1.5 py-0.5 rounded">
-                        {app.time}
+                        {formatTime(app.time)}
                       </span>
                       {isCompleted ? (
                         <span className="text-[9px] text-emerald-400 font-extrabold">✓ Hecho</span>
@@ -859,7 +867,7 @@ export default function ModoSillaPWA({
                       {displayClient.name}
                     </h3>
                     <div className="flex items-center gap-1.5 text-xs text-neutral-400 truncate">
-                      <span className="font-mono text-amber-400 font-bold shrink-0">{activeAppointment.time}</span>
+                      <span className="font-mono text-amber-400 font-bold shrink-0">{formatTime(activeAppointment.time)}</span>
                       <span>•</span>
                       <span className="truncate">{activeAppointment.serviceName}</span>
                     </div>

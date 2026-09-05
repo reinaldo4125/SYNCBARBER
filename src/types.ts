@@ -5,6 +5,7 @@ export interface Service {
   duration: number; // in minutes
   category: string;
   description: string;
+  allowRewardRedemption?: boolean; // Permite canjear este servicio con puntos de fidelización o cumpleaños
 }
 
 export interface TimeBlock {
@@ -51,6 +52,8 @@ export interface Barber {
   specialties?: string[];
   avatarUrl?: string;
   photoUrl?: string;
+  phone?: string; // Número de contacto / WhatsApp del barbero
+  whatsapp?: string; // WhatsApp directo
   commissionPercent?: number; // percentage of service price they earn (e.g. 50)
   blockedDates?: string[]; // list of blocked YYYY-MM-DD dates e.g. sick, resting
   timeBlocks?: TimeBlock[];
@@ -113,6 +116,10 @@ export interface Appointment {
   checkedIn?: boolean;
   checkInTime?: string;
   penaltyApplied?: number; // Abono o multa cobrada en esta cita
+
+  // Beneficio de Cumpleaños
+  isBirthdayBenefit?: boolean; // Corte regalo por mes de cumpleaños
+  birthDate?: string; // YYYY-MM-DD o MM-DD
 
   // Catálogo de Estilo Elegido por el Cliente
   selectedStyleId?: string;
@@ -191,6 +198,7 @@ export interface SalonConfig {
   closeTime: string; // "20:00"
   workingDays: number[]; // [1, 2, 3, 4, 5, 6] (Mon-Sat)
   intervalMinutes: number; // 30
+  timeFormat?: '12h' | '24h'; // '12h' (8:00 AM, 2:30 PM) o '24h' (08:00, 14:30)
   licenseType?: 'basica' | 'profesional' | 'premium';
   activeLicenseKey?: string;
   activationDate?: string; // Fecha de activación (e.g. "2026-07-24")
@@ -307,8 +315,12 @@ export interface ClientAccount {
   galleryPhotos?: HaircutPhoto[];
   
   // Inteligencia de Retención y Re-Corte
-  avgCutCycleDays?: number; // Frecuencia de corte en días (default 21)
+  avgCutCycleDays?: number; // Frecuencia de corte en días (default 15)
   lastCutDate?: string; // YYYY-MM-DD del último corte realizado
+
+  // Cumpleaños y Beneficio de Regalo
+  birthDate?: string; // YYYY-MM-DD o MM-DD
+  birthdayBenefitUsedYears?: string[]; // Ej: ["2026"]
 
   // Señas, Abonos y Multas acumuladas
   pendingPenalty?: number; // Total acumulado en multas / señas pendientes

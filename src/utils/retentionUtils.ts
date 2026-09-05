@@ -30,7 +30,7 @@ export function calculateClientRetention(
     })
     .sort((a, b) => b.date.localeCompare(a.date));
 
-  const cycleDays = client.avgCutCycleDays || 21; // Default 21 days cycle
+  const cycleDays = client.avgCutCycleDays || 15; // Default 15 days cycle
   
   // Find last cut date
   let lastCutDateStr = client.lastCutDate;
@@ -104,7 +104,7 @@ export function calculateSalonRetentionMetrics(
       dueSoonCount: 0,
       atRiskCount: 0,
       retentionRate: 100,
-      avgCycleDays: 21,
+      avgCycleDays: 15,
       estimatedRevenueAtRisk: 0,
     };
   }

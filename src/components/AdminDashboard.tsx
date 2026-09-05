@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import AutoReagendaModal from "./AutoReagendaModal";
+import PushNotificationBanner from "./PushNotificationBanner";
+import { formatTime } from "../utils/formatters";
 import { 
   Appointment, 
   Service, 
@@ -482,6 +484,19 @@ export default function AdminDashboard({
           ))}
         </div>
       )}
+
+      {/* Banner de Notificaciones Push & WhatsApp */}
+      <PushNotificationBanner 
+        config={config} 
+        barber={barbers?.find(b => b.id === loggedBarberId)}
+        onUpdateWhatsAppPhone={async (phone) => {
+          if (loggedBarberId && onUpdateBarber) {
+            await onUpdateBarber(loggedBarberId, { whatsapp: phone, phone });
+          } else if (onUpdateConfig) {
+            await onUpdateConfig({ whatsapp: phone, phone });
+          }
+        }}
+      />
 
       {/* Real-time Status Alert */}
       <div className="bg-emerald-950/40 border border-emerald-800/50 text-emerald-300 rounded-xl p-3 flex items-center justify-between shadow-xs">
@@ -1528,7 +1543,7 @@ export default function AdminDashboard({
                       <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                         <span className="bg-elegant-card border border-elegant-border text-white text-xs font-mono font-bold px-3 py-1 rounded-xl flex items-center gap-1.5 shadow-xs">
                           <Clock className="h-3.5 w-3.5 text-elegant-gold" />
-                          {app.time}
+                          {formatTime(app.time, config?.timeFormat)}
                         </span>
                         <span className="text-xs text-neutral-300 font-medium font-mono">
                           ({app.duration} min)
@@ -1579,6 +1594,11 @@ export default function AdminDashboard({
                             <User className="h-4.5 w-4.5 text-elegant-gold" />
                             {app.clientName}
                           </h4>
+                          {app.isBirthdayBenefit && (
+                            <span className="bg-gradient-to-r from-purple-900 via-amber-900 to-purple-900 border-2 border-amber-400/80 text-amber-300 font-extrabold text-xs px-3 py-1 rounded-full flex items-center gap-1.5 shadow-md shadow-amber-500/20 animate-pulse">
+                              🎂 CUMPLEAÑOS (Corte Gratis $0 COP)
+                            </span>
+                          )}
                           {(() => {
                             const matchedCli = clients.find(c => 
                               (c.phone && app.clientPhone && c.phone.replace(/\D/g, "") === app.clientPhone.replace(/\D/g, "")) ||
@@ -1619,7 +1639,7 @@ export default function AdminDashboard({
                           </span>
                           
                           <a
-                            href={`https://wa.me/${app.clientPhone.replace(/\D/g, "").length === 10 ? "57" + app.clientPhone.replace(/\D/g, "") : app.clientPhone.replace(/\D/g, "")}?text=${encodeURIComponent(`Hola *${app.clientName}*, te recordamos tu turno para *${app.serviceName}* en *SYNCBARBER* el día *${app.date.split("-").reverse().join("/")}* a las *${app.time}*. ¡Te esperamos! 💈✂️`)}`}
+                            href={`https://wa.me/${app.clientPhone.replace(/\D/g, "").length === 10 ? "57" + app.clientPhone.replace(/\D/g, "") : app.clientPhone.replace(/\D/g, "")}?text=${encodeURIComponent(`Hola *${app.clientName}*, te recordamos tu turno para *${app.serviceName}* en *SYNCBARBER* el día *${app.date.split("-").reverse().join("/")}* a las *${formatTime(app.time, config?.timeFormat)}*. ¡Te esperamos! 💈✂️`)}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-700/60 hover:border-emerald-400 rounded-xl text-emerald-300 font-extrabold transition-all text-xs uppercase tracking-wider cursor-pointer shadow-xs"

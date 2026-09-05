@@ -1,10 +1,14 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
+import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { Appointment, Service, SalonConfig, Barber, MembershipPlan, ClientAccount, DailyClosure, CatalogStyle } from "./src/types";
 import { DEFAULT_CATALOG_STYLES } from "./src/data/defaultCatalogStyles";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = 3000;
@@ -180,6 +184,7 @@ let tenantData: Record<string, TenantData> = {
       borderColor: "#1F314D",
       tagline: "Arte, Precisión & Estilo Masculino",
       noShowPenaltyAmount: 10000,
+      timeFormat: "12h",
     },
     services: [
       {
@@ -689,6 +694,9 @@ app.put("/api/config", (req, res) => {
   if (subCardColor !== undefined) tenant.config.subCardColor = subCardColor;
   if (borderColor !== undefined) tenant.config.borderColor = borderColor;
   if (noShowPenaltyAmount !== undefined) tenant.config.noShowPenaltyAmount = Number(noShowPenaltyAmount);
+  if (req.body.phone !== undefined) tenant.config.phone = req.body.phone;
+  if (req.body.whatsapp !== undefined) tenant.config.whatsapp = req.body.whatsapp;
+  if (req.body.timeFormat !== undefined) tenant.config.timeFormat = req.body.timeFormat;
 
   // Broadcast in real-time
   broadcastChange("config_update", tenant.config, tenantId);
@@ -1491,9 +1499,9 @@ function loadFromLocalDisk(): boolean {
         if (parsed.tenantData && typeof parsed.tenantData === "object" && Object.keys(parsed.tenantData).length > 0) {
           Object.assign(tenantData, parsed.tenantData);
         }
-        if (Array.isArray(parsed.globalAnnouncements) && parsed.globalAnnouncements.length > 0) globalAnnouncements = parsed.globalAnnouncements;
-        if (parsed.saasPricingPlans) saasPricingPlans = parsed.saasPricingPlans;
-        if (Array.isArray(parsed.memberships) && parsed.memberships.length > 0) memberships = parsed.memberships;
+        if (Array.isArray(parsed.globalAnnouncements)) globalAnnouncements = parsed.globalAnnouncements;
+        if (parsed.saasPricingPlans && typeof parsed.saasPricingPlans === "object") saasPricingPlans = parsed.saasPricingPlans;
+        if (Array.isArray(parsed.memberships)) memberships = parsed.memberships;
 
         console.log(`[Local DB] 💾 Recuperados ${tenants.length} inquilinos desde almacenamiento local (${filePath}).`);
         return true;
@@ -1628,6 +1636,21 @@ async function loadFromFirestore() {
       // Helpdesk tickets
       if (data.helpdeskTickets && Array.isArray(data.helpdeskTickets)) {
         helpdeskTickets = data.helpdeskTickets;
+      }
+
+      // Global Announcements (broadcasts)
+      if (Array.isArray(data.globalAnnouncements)) {
+        globalAnnouncements = data.globalAnnouncements;
+      }
+
+      // SaaS Pricing Plans
+      if (data.saasPricingPlans && typeof data.saasPricingPlans === "object") {
+        saasPricingPlans = data.saasPricingPlans;
+      }
+
+      // Memberships
+      if (Array.isArray(data.memberships)) {
+        memberships = data.memberships;
       }
 
       isFirestoreLoaded = true;
@@ -2034,6 +2057,7 @@ const createTenant = (
     customAdminPassword?: string;
     customMaxBarbers?: number;
     isComplimentary?: boolean;
+    timeFormat?: '12h' | '24h';
   } = {}
 ) => {
   const isDefaultTenant = id === "bella-barba";
@@ -2052,6 +2076,7 @@ const createTenant = (
       closeTime: extraDetails.closeTime || "20:00",
       workingDays: [1, 2, 3, 4, 5, 6],
       intervalMinutes: 30,
+      timeFormat: extraDetails.timeFormat || "12h",
       licenseType: licenseType as any,
       activeLicenseKey: licenseKey,
       activationDate: actDate,
@@ -2673,7 +2698,7 @@ app.get("/api/services", (req, res) => {
 app.post("/api/services", (req, res) => {
   const tenantId = getTenantId(req);
   const tenant = tenantData[tenantId] || tenantData["bella-barba"];
-  const { name, price, duration, category, description } = req.body;
+  const { name, price, duration, category, description, allowRewardRedemption } = req.body;
   if (!name || !price || !duration || !category) {
     return res.status(400).json({ error: "Faltan campos obligatorios" });
   }
@@ -2685,6 +2710,7 @@ app.post("/api/services", (req, res) => {
     duration: Number(duration),
     category,
     description: description || "",
+    allowRewardRedemption: allowRewardRedemption !== undefined ? Boolean(allowRewardRedemption) : true,
   };
 
   tenant.services.push(newService);
@@ -2696,7 +2722,7 @@ app.put("/api/services/:id", (req, res) => {
   const tenantId = getTenantId(req);
   const tenant = tenantData[tenantId] || tenantData["bella-barba"];
   const { id } = req.params;
-  const { name, price, duration, category, description } = req.body;
+  const { name, price, duration, category, description, allowRewardRedemption } = req.body;
   
   const index = tenant.services.findIndex((s) => s.id === id);
   if (index === -1) {
@@ -2710,6 +2736,7 @@ app.put("/api/services/:id", (req, res) => {
     duration: duration !== undefined ? Number(duration) : tenant.services[index].duration,
     category: category || tenant.services[index].category,
     description: description !== undefined ? description : tenant.services[index].description,
+    allowRewardRedemption: allowRewardRedemption !== undefined ? Boolean(allowRewardRedemption) : tenant.services[index].allowRewardRedemption,
   };
 
   broadcastChange("services_update", tenant.services, tenantId);
@@ -2967,7 +2994,7 @@ app.get("/api/clients", (req, res) => {
 app.post("/api/clients/register", (req, res) => {
   const tenantId = getTenantId(req);
   const tenant = tenantData[tenantId] || tenantData["bella-barba"];
-  const { name, phone, email, password, membershipId, loyaltyPoints } = req.body;
+  const { name, phone, email, password, membershipId, loyaltyPoints, birthDate } = req.body;
   if (!name || !phone || !email || !password) {
     return res.status(400).json({ error: "Todos los campos son obligatorios" });
   }
@@ -2998,8 +3025,10 @@ app.post("/api/clients/register", (req, res) => {
     phone,
     email,
     password,
+    birthDate: birthDate || undefined,
     createdAt: new Date().toISOString(),
     loyaltyPoints: loyaltyPoints !== undefined ? Number(loyaltyPoints) : 1,
+    avgCutCycleDays: 15,
     membershipId: membershipIdVal,
     membershipActive: membershipActiveVal
   };
@@ -3013,18 +3042,49 @@ app.get("/api/clients/:id", (req, res) => {
   const tenantId = getTenantId(req);
   const tenant = tenantData[tenantId] || tenantData["bella-barba"];
   const { id } = req.params;
+  const phoneQuery = (req.query.phone as string) || "";
+  const emailQuery = (req.query.email as string) || "";
   
+  const cleanIdDigits = id ? id.replace(/\D/g, "") : "";
+  const cleanPhoneDigits = phoneQuery ? phoneQuery.replace(/\D/g, "") : "";
+
+  // Helper to find client in a client list
+  const findClient = (clientList: typeof tenant.clients) => {
+    // 1. By ID
+    let found = clientList.find(c => c.id === id);
+    if (found) return found;
+
+    // 2. By phone query or ID as phone
+    if (cleanPhoneDigits && cleanPhoneDigits.length >= 7) {
+      found = clientList.find(c => c.phone && c.phone.replace(/\D/g, "").includes(cleanPhoneDigits.slice(-7)));
+      if (found) return found;
+    }
+    if (cleanIdDigits && cleanIdDigits.length >= 7) {
+      found = clientList.find(c => c.phone && c.phone.replace(/\D/g, "").includes(cleanIdDigits.slice(-7)));
+      if (found) return found;
+    }
+
+    // 3. By email query or ID as email
+    if (emailQuery) {
+      found = clientList.find(c => c.email && c.email.toLowerCase() === emailQuery.toLowerCase());
+      if (found) return found;
+    }
+    if (id && id.includes("@")) {
+      found = clientList.find(c => c.email && c.email.toLowerCase() === id.toLowerCase());
+      if (found) return found;
+    }
+
+    return null;
+  };
+
   // Find in current tenant first
-  let client = tenant.clients.find(c => c.id === id);
+  let client = findClient(tenant.clients);
   
   // If not found in current, look across all tenants
   if (!client) {
     for (const tId of Object.keys(tenantData)) {
-      const otherClient = tenantData[tId].clients.find(c => c.id === id);
-      if (otherClient) {
-        client = otherClient;
-        break;
-      }
+      client = findClient(tenantData[tId].clients);
+      if (client) break;
     }
   }
 
@@ -3320,6 +3380,53 @@ app.post("/api/clients/login", (req, res) => {
   res.json({ success: true, client });
 });
 
+app.post("/api/clients/reset-password", (req, res) => {
+  const tenantId = getTenantId(req);
+  const tenant = tenantData[tenantId] || tenantData["bella-barba"];
+  const { email, phone, newPassword } = req.body;
+
+  if (!email || !newPassword) {
+    return res.status(400).json({ error: "Faltan datos obligatorios (correo electrónico y nueva contraseña)." });
+  }
+
+  const targetEmail = email.toLowerCase().trim();
+  let client: any = null;
+  let clientTenantId = tenantId;
+
+  for (const tId of Object.keys(tenantData)) {
+    const found = tenantData[tId].clients.find(
+      c => c.email.toLowerCase() === targetEmail
+    );
+    if (found) {
+      client = found;
+      clientTenantId = tId;
+      break;
+    }
+  }
+
+  if (!client) {
+    return res.status(404).json({ error: "No se encontró ninguna cuenta registrada con este correo electrónico." });
+  }
+
+  // Si proporciona celular para validación de seguridad
+  if (phone) {
+    const cleanPhone = phone.replace(/\D/g, "");
+    const cleanClientPhone = (client.phone || "").replace(/\D/g, "");
+    if (cleanPhone && cleanClientPhone && !cleanClientPhone.includes(cleanPhone.slice(-7))) {
+      return res.status(400).json({ error: "El número de celular ingresado no coincide con el registrado en esta cuenta." });
+    }
+  }
+
+  client.password = newPassword.trim();
+  broadcastChange("clients_update", tenantData[clientTenantId].clients, clientTenantId);
+
+  res.json({
+    success: true,
+    message: "¡Tu contraseña ha sido restablecida con éxito! Ya puedes ingresar con tu nueva clave.",
+    client
+  });
+});
+
 // Reviews API Routes (Propuesta A)
 app.get("/api/reviews", (req, res) => {
   const tenantId = getTenantId(req);
@@ -3380,6 +3487,7 @@ app.put("/api/clients/:id", (req, res) => {
   if (phone !== undefined) client.phone = phone;
   if (email !== undefined) client.email = email;
   if (password !== undefined) client.password = password;
+  if (req.body.birthDate !== undefined) client.birthDate = req.body.birthDate;
   if (loyaltyPoints !== undefined) client.loyaltyPoints = Number(loyaltyPoints);
   if (req.body.internalNotes !== undefined) client.internalNotes = req.body.internalNotes;
   if (req.body.technicalPreferences !== undefined) client.technicalPreferences = req.body.technicalPreferences;
@@ -3442,7 +3550,7 @@ Genera un mensaje de WhatsApp amigable, altamente personalizado, persuasivo y mu
 
 Datos del Cliente:
 - Nombre: ${clientName}
-- Días desde su último corte: ${daysSinceLastCut} días (frecuencia habitual: cada ${avgCutCycleDays || 21} días)
+- Días desde su último corte: ${daysSinceLastCut} días (frecuencia habitual: cada ${avgCutCycleDays || 15} días)
 - Barbero preferido: ${barberName || 'su barbero estrella'}
 - Servicio/Estilo anterior: ${serviceName || 'Corte Fade'}
 - Preferencias técnicas de estilo: ${JSON.stringify(technicalPreferences || {})}
@@ -3528,7 +3636,7 @@ app.get("/api/barbers", (req, res) => {
 app.post("/api/barbers", (req, res) => {
   const tenantId = getTenantId(req);
   const tenant = tenantData[tenantId] || tenantData["bella-barba"];
-  const { name, username, password, specialties, avatarUrl, photoUrl } = req.body;
+  const { name, username, password, specialties, avatarUrl, photoUrl, phone, whatsapp } = req.body;
   if (!name || !username || !password) {
     return res.status(400).json({ error: "Faltan campos obligatorios" });
   }
@@ -3558,6 +3666,8 @@ app.post("/api/barbers", (req, res) => {
     name,
     username,
     password,
+    phone: phone || whatsapp || "",
+    whatsapp: whatsapp || phone || "",
     isActive: true,
     specialties: specialties || ["cabello"],
     avatarUrl: avatarUrl || photoUrl || "",
@@ -3565,6 +3675,7 @@ app.post("/api/barbers", (req, res) => {
   };
 
   tenant.barbers.push(newBarber);
+  saveGlobalsToFirestore();
   broadcastChange("barbers_update", tenant.barbers, tenantId);
   res.status(201).json(newBarber);
 });
@@ -3573,7 +3684,7 @@ app.put("/api/barbers/:id", (req, res) => {
   const tenantId = getTenantId(req);
   const tenant = tenantData[tenantId] || tenantData["bella-barba"];
   const { id } = req.params;
-  const { name, username, password, isActive, specialties, commissionPercent, avatarUrl, photoUrl } = req.body;
+  const { name, username, password, isActive, specialties, commissionPercent, avatarUrl, photoUrl, phone, whatsapp } = req.body;
 
   const index = tenant.barbers.findIndex(b => b.id === id);
   if (index === -1) {
@@ -3608,6 +3719,8 @@ app.put("/api/barbers/:id", (req, res) => {
     name: name || tenant.barbers[index].name,
     username: username || tenant.barbers[index].username,
     password: password || tenant.barbers[index].password,
+    phone: phone !== undefined ? phone : tenant.barbers[index].phone,
+    whatsapp: whatsapp !== undefined ? whatsapp : (phone !== undefined ? phone : tenant.barbers[index].whatsapp),
     isActive: isActive !== undefined ? isActive : tenant.barbers[index].isActive,
     specialties: specialties || tenant.barbers[index].specialties,
     avatarUrl: avatarUrl !== undefined ? avatarUrl : (photoUrl !== undefined ? photoUrl : tenant.barbers[index].avatarUrl),
@@ -3626,6 +3739,7 @@ app.put("/api/barbers/:id", (req, res) => {
     }
   });
 
+  saveGlobalsToFirestore();
   broadcastChange("barbers_update", tenant.barbers, tenantId);
   broadcastChange("appointment_updated", { appointment: {}, appointments: tenant.appointments }, tenantId); // force update list
   res.json(tenant.barbers[index]);
@@ -3650,6 +3764,7 @@ app.delete("/api/barbers/:id", (req, res) => {
     }
   });
 
+  saveGlobalsToFirestore();
   broadcastChange("barbers_update", tenant.barbers, tenantId);
   broadcastChange("appointment_updated", { appointment: {}, appointments: tenant.appointments }, tenantId); // force update list
   res.json({ message: "Barbero eliminado con éxito", barber: deleted });
@@ -3750,6 +3865,8 @@ app.post("/api/appointments", (req, res) => {
     time, 
     notes, 
     barberId,
+    birthDate,
+    isBirthdayBenefit,
     selectedStyleId,
     selectedStyleName,
     selectedStylePhotoUrl,
@@ -3835,6 +3952,7 @@ app.post("/api/appointments", (req, res) => {
       email: clientEmail || "",
       createdAt: new Date().toISOString(),
       loyaltyPoints: 0,
+      avgCutCycleDays: 15,
       pendingPenalty: 0,
       penaltyHistory: []
     };
@@ -3842,7 +3960,31 @@ app.post("/api/appointments", (req, res) => {
     broadcastChange("clients_list_update", tenant.clients, tenantId);
   }
   
-  if (req.body.redeemReward && clientMatch && (clientMatch.loyaltyPoints || 0) >= 5) {
+  // If birthDate is provided, update client record
+  if (birthDate && clientMatch) {
+    clientMatch.birthDate = birthDate;
+  }
+
+  let isBirthdayBenefitApplied = false;
+
+  if (isBirthdayBenefit) {
+    // Verify birthday month match
+    const apptMonth = date.substring(5, 7); // "09" from "2026-09-04"
+    const clientBdayMonth = (clientMatch?.birthDate || birthDate || "").includes("-")
+      ? (clientMatch?.birthDate || birthDate || "").split("-").slice(-2, -1)[0] || (clientMatch?.birthDate || birthDate || "").substring(0, 2)
+      : "";
+    
+    const apptYear = date.substring(0, 4);
+    const usedYears = clientMatch?.birthdayBenefitUsedYears || [];
+
+    if (!usedYears.includes(apptYear)) {
+      calculatedPrice = 0;
+      isBirthdayBenefitApplied = true;
+      if (clientMatch) {
+        clientMatch.birthdayBenefitUsedYears = [...usedYears, apptYear];
+      }
+    }
+  } else if (req.body.redeemReward && clientMatch && (clientMatch.loyaltyPoints || 0) >= 5) {
     calculatedPrice = 0;
     clientMatch.loyaltyPoints = (clientMatch.loyaltyPoints || 0) - 5;
     setTimeout(() => {
@@ -3890,13 +4032,15 @@ app.post("/api/appointments", (req, res) => {
     date,
     time,
     duration: selectedService.duration,
-    status: "pending", 
+    status: req.body.status || "confirmed", 
     notes: appointmentNotes,
     barberId: assignedBarberId,
     barberName: assignedBarberName,
     createdAt: new Date().toISOString(),
     membershipId: appointmentMembershipId,
     membershipDiscountPercent: appointmentDiscountPercent,
+    isBirthdayBenefit: isBirthdayBenefitApplied,
+    birthDate: birthDate || clientMatch?.birthDate || undefined,
     selectedStyleId: selectedStyleId || undefined,
     selectedStyleName: selectedStyleName || undefined,
     selectedStylePhotoUrl: selectedStylePhotoUrl || undefined,
@@ -4385,12 +4529,8 @@ app.post("/api/cash-register/close", (req, res) => {
 
 // Setup Vite development or production serving
 async function startServer() {
-  // Load initial data from Firebase Firestore before accepting incoming HTTP requests
-  try {
-    await loadFromFirestore();
-  } catch (err) {
-    console.error("[Firebase] Error en carga inicial de Firestore:", err);
-  }
+  // Preload local disk database immediately (synchronous & instant)
+  loadFromLocalDisk();
 
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -4407,7 +4547,12 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[Server] Corriendo en puerto ${PORT} con Firestore sincronizado.`);
+    console.log(`[Server] Corriendo en puerto ${PORT} con persistencia activa.`);
+  });
+
+  // Sync with Firestore in background without blocking server bootstrap
+  loadFromFirestore().catch((err) => {
+    console.warn("[Firebase] Error durante sincronización en segundo plano de Firestore:", err?.message || err);
   });
 }
 
