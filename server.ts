@@ -7,8 +7,18 @@ import { GoogleGenAI } from "@google/genai";
 import { Appointment, Service, SalonConfig, Barber, MembershipPlan, ClientAccount, DailyClosure, CatalogStyle } from "./src/types";
 import { DEFAULT_CATALOG_STYLES } from "./src/data/defaultCatalogStyles";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const getAppDir = () => {
+  try {
+    if (typeof __dirname !== "undefined") return __dirname;
+    if (typeof import.meta !== "undefined" && import.meta.url) {
+      return path.dirname(fileURLToPath(import.meta.url));
+    }
+  } catch {
+    // fallback
+  }
+  return process.cwd();
+};
+const appDir = getAppDir();
 
 const app = express();
 const PORT = 3000;
@@ -43,8 +53,8 @@ console.log(`[Firebase] Entorno BD activo: ${isProduction ? "🟢 PRODUCCIÓN" :
 // Find and load firebase-applet-config.json across multiple possible runtime paths
 const configCandidates = [
   path.resolve(process.cwd(), "firebase-applet-config.json"),
-  path.resolve(__dirname, "firebase-applet-config.json"),
-  path.resolve(__dirname, "../firebase-applet-config.json"),
+  path.resolve(appDir, "firebase-applet-config.json"),
+  path.resolve(appDir, "../firebase-applet-config.json"),
   "./firebase-applet-config.json"
 ];
 
