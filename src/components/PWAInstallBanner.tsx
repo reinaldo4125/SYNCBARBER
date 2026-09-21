@@ -120,46 +120,68 @@ export default function PWAInstallBanner({ config }: PWAInstallProps) {
     <>
       {/* Floating Smart Banner for Mobile / QR Visitors */}
       {!isBannerDismissed && (
-        <div className="bg-gradient-to-r from-neutral-900 via-elegant-card to-neutral-900 border border-elegant-gold/40 rounded-2xl p-3.5 shadow-xl shadow-black/40 flex items-center justify-between gap-3 animate-fadeIn relative overflow-hidden ring-1 ring-elegant-gold/20">
-          <div className="absolute top-0 left-0 w-1 h-full bg-elegant-gold" />
-          
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="h-10 w-10 rounded-xl bg-elegant-gold/15 border border-elegant-gold/30 flex items-center justify-center text-elegant-gold shrink-0">
-              <Smartphone className="h-5 w-5 animate-pulse" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] bg-elegant-gold text-black font-extrabold px-1.5 py-0.2 rounded uppercase tracking-wider">
-                  Acceso Rápido
-                </span>
-                <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-0.5">
-                  <Sparkles className="h-2.5 w-2.5" /> 1-Clic
-                </span>
+        <div 
+          className="bg-elegant-card border border-elegant-border hover:border-elegant-gold/30 rounded-2xl p-3.5 sm:p-4.5 shadow-lg text-white transition-all relative"
+          id="pwa-install-banner"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+            {/* Top row in mobile / Left side in desktop */}
+            <div className="flex items-start gap-3 min-w-0 flex-1">
+              <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-xl bg-elegant-gold/15 border border-elegant-gold/30 flex items-center justify-center text-elegant-gold shrink-0 mt-0.5 sm:mt-0">
+                <Smartphone className="h-5 w-5 animate-pulse" />
               </div>
-              <h4 className="text-xs font-bold text-white truncate mt-0.5">
-                Instala el Acceso Directo de {salonName}
-              </h4>
-              <p className="text-[10px] text-elegant-text-muted hidden sm:block truncate">
-                Agrega el ícono a la pantalla de tu celular para agendar en 1 segundo.
-              </p>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={triggerInstall}
-              className="px-3 py-1.5 bg-elegant-gold hover:bg-amber-400 text-black rounded-xl text-xs font-bold transition-all shadow-md shadow-amber-500/10 flex items-center gap-1.5 cursor-pointer whitespace-nowrap active:scale-95"
-            >
-              <Download className="h-3.5 w-3.5" />
-              <span>Instalar App</span>
-            </button>
-            <button
-              onClick={dismissBanner}
-              className="text-neutral-400 hover:text-white p-1 rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer"
-              title="Cerrar aviso"
-            >
-              <X className="h-4 w-4" />
-            </button>
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                  <span className="text-[10px] bg-elegant-gold text-black font-extrabold px-2 py-0.5 rounded-md uppercase tracking-wider whitespace-nowrap">
+                    Acceso Rápido
+                  </span>
+                  <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 whitespace-nowrap">
+                    <Sparkles className="h-3 w-3" /> 1-Clic
+                  </span>
+                </div>
+
+                <h4 className="text-xs sm:text-sm font-bold text-white leading-snug">
+                  Instala el Acceso Directo de {salonName}
+                </h4>
+
+                <p className="text-[11px] text-elegant-text-muted leading-relaxed hidden xs:block sm:block">
+                  Agrega el ícono a la pantalla de inicio de tu celular para agendar turnos al instante.
+                </p>
+              </div>
+
+              {/* Close button in mobile top right */}
+              <button
+                onClick={dismissBanner}
+                className="sm:hidden text-neutral-400 hover:text-white p-1 rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer shrink-0 -mt-1 -mr-1"
+                title="Cerrar aviso"
+                id="pwa-dismiss-btn-mobile"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Actions: Full width comfortable button on mobile, inline on desktop */}
+            <div className="flex items-center gap-2 shrink-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-elegant-border/40">
+              <button
+                onClick={triggerInstall}
+                className="flex-1 sm:flex-initial px-4 py-2 sm:px-4 sm:py-2 bg-elegant-gold hover:bg-amber-400 text-black font-extrabold rounded-xl text-xs transition-all shadow-md shadow-amber-500/10 flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap active:scale-95"
+                id="pwa-trigger-install-btn"
+              >
+                <Download className="h-3.5 w-3.5 shrink-0" />
+                <span>Instalar App</span>
+              </button>
+
+              {/* Close button on desktop */}
+              <button
+                onClick={dismissBanner}
+                className="hidden sm:flex text-neutral-400 hover:text-white p-2 rounded-xl hover:bg-neutral-800 transition-colors cursor-pointer shrink-0"
+                title="Cerrar aviso"
+                id="pwa-dismiss-btn-desktop"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { Appointment, ClientAccount, Barber, HaircutPhoto, TechnicalPreferences, InventoryItem, Service } from "../types";
 import { formatTime } from "../utils/formatters";
 import { 
@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 import RetentionEngineModal from "./RetentionEngineModal";
 import AutoReagendaModal from "./AutoReagendaModal";
-import PushNotificationBanner from "./PushNotificationBanner";
+import { useShiftStartEngine, calculateShiftSummary } from "../utils/useShiftStartEngine";
 
 interface ModoSillaPWAProps {
   appointments: Appointment[];
@@ -115,9 +115,40 @@ export default function ModoSillaPWA({
   // Success / Info toast message inside PWA
   const [pwaToast, setPwaToast] = useState<string>("");
 
-  // Announcements State in ModoSilla
+  // Lock background scrolling when ModoSilla is active to eliminate double scrollbars
+  useEffect(() => {
+    const originalBodyOverflow = document.body.style.overflow;
+    const originalHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalBodyOverflow;
+      document.documentElement.style.overflow = originalHtmlOverflow;
+    };
+  }, []);
+
+  // Announcements State in ModoSilla with localStorage persistence
   const [announcements, setAnnouncements] = useState<any[]>([]);
-  const [dismissedAnnouncements, setDismissedAnnouncements] = useState<string[]>([]);
+  const [dismissedAnnouncements, setDismissedAnnouncements] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("syncbarber_dismissed_announcements");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const handleDismissAnnouncement = (id: string) => {
+    setDismissedAnnouncements((prev) => {
+      const updated = prev.includes(id) ? prev : [...prev, id];
+      try {
+        localStorage.setItem("syncbarber_dismissed_announcements", JSON.stringify(updated));
+      } catch (err) {
+        console.error(err);
+      }
+      return updated;
+    });
+  };
 
   // Daily Earnings Modal for Barbero
   const [showMyEarningsModal, setShowMyEarningsModal] = useState<boolean>(false);
@@ -163,6 +194,22 @@ export default function ModoSillaPWA({
     setPwaToast(msg);
     setTimeout(() => setPwaToast(""), 3500);
   };
+
+  // Shift Start Alarm and Daily Schedule calculation for barber chair
+  const todayShiftData = useMemo(() => {
+    return calculateShiftSummary(appointments, barbers, loggedBarberId, "barber");
+  }, [appointments, barbers, loggedBarberId]);
+
+  const { triggerShiftAlert } = useShiftStartEngine({
+    appointments,
+    barbers,
+    loggedBarberId,
+    role: "barber",
+    salonName: config?.name || salonName || "Barbería",
+    onTriggerToast: (title, message) => {
+      triggerPwaToast(`${title} • ${message}`);
+    }
+  });
 
   // Consumptions state inside chair view
   const [showAddConsumption, setShowAddConsumption] = useState<boolean>(false);
@@ -558,54 +605,72 @@ export default function ModoSillaPWA({
     <div className="fixed inset-0 z-50 bg-[#0B0B0E] text-white overflow-y-auto flex flex-col font-sans select-none animate-fadeIn">
       
       {/* HEADER PWA TOP BAR */}
-      <header className="sticky top-0 z-40 bg-[#121217]/95 backdrop-blur-md border-b border-elegant-gold/30 px-4 py-3 flex items-center justify-between shadow-xl">
-        <div className="flex items-center gap-2.5">
-          <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-amber-600 to-elegant-gold text-black flex items-center justify-center font-extrabold shadow-lg shrink-0">
-            <Smartphone className="h-5 w-5" />
+      <header className="sticky top-0 z-40 bg-[#121217]/95 backdrop-blur-md border-b border-elegant-gold/30 px-3 sm:px-4 py-2.5 flex items-center justify-between shadow-xl gap-2">
+        <div className="flex items-center gap-2 min-w-0 shrink">
+          <div className="h-8 w-8 rounded-xl bg-gradient-to-tr from-amber-600 to-elegant-gold text-black flex items-center justify-center font-extrabold shadow-lg shrink-0">
+            <Smartphone className="h-4 w-4" />
           </div>
-          <div>
+          <div className="min-w-0 truncate">
             <div className="flex items-center gap-1.5">
-              <span className="text-xs font-extrabold text-white uppercase tracking-wider font-sans">
-                MODO SILLA PWA
+              <span className="text-xs font-black text-white uppercase tracking-wider font-sans truncate">
+                MODO SILLA
               </span>
-              <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[9px] font-extrabold px-1.5 py-0.2 rounded-full flex items-center gap-1 font-mono">
+              <span className="hidden sm:inline-flex bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[9px] font-extrabold px-1.5 py-0.2 rounded-full items-center gap-1 font-mono shrink-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-                &lt; 2 SEC
+                PWA
               </span>
             </div>
-            <p className="text-[10px] text-neutral-400">
-              Vista Ultra Rápida de Teléfono para Barberos
+            <p className="text-[10px] text-neutral-400 truncate hidden lg:block">
+              Vista Ultra Rápida para Barberos
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Botón Mi Jornada / Turnos del Día */}
+          <button
+            onClick={() => {
+              const res = triggerShiftAlert(true);
+              if (res) {
+                triggerPwaToast(`☀️ Jornada: ${res.totalToday} turnos hoy`);
+              }
+            }}
+            className="px-2 sm:px-2.5 py-1.5 bg-amber-500/15 border border-amber-500/40 text-amber-300 rounded-xl text-[10px] font-extrabold flex items-center gap-1.5 hover:bg-amber-500/25 transition-all cursor-pointer shadow-xs active:scale-95"
+            title="Consultar turnos agendados hoy"
+          >
+            <Clock className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+            <span className="hidden sm:inline">☀️ {todayShiftData.totalToday} {todayShiftData.totalToday === 1 ? "Cita" : "Citas"}</span>
+            <span className="sm:hidden font-mono">{todayShiftData.totalToday}</span>
+          </button>
+
           {/* Botón Mi Nómina del Día */}
           <button
             onClick={() => setShowMyEarningsModal(true)}
-            className="px-2.5 py-1.5 bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 rounded-xl text-[10px] font-extrabold flex items-center gap-1 hover:bg-emerald-500/25 transition-all cursor-pointer shadow-sm"
+            className="px-2 sm:px-2.5 py-1.5 bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 rounded-xl text-[10px] font-extrabold flex items-center gap-1.5 hover:bg-emerald-500/25 transition-all cursor-pointer shadow-xs"
+            title="Ver ganancias de hoy"
           >
-            <Award className="h-3 w-3 text-emerald-400" />
-            <span>💰 Mis Ganancias</span>
+            <Award className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+            <span className="hidden md:inline">Ganancias</span>
           </button>
 
           {/* Botón Instalar App Móvil */}
           <button
             onClick={() => setShowPwaGuide(true)}
-            className="px-2.5 py-1.5 bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded-xl text-[10px] font-extrabold flex items-center gap-1 hover:bg-amber-500/20 transition-all cursor-pointer"
+            className="p-1.5 sm:px-2 sm:py-1.5 bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded-xl text-[10px] font-extrabold flex items-center gap-1 hover:bg-amber-500/20 transition-all cursor-pointer"
+            title="Instalar App Móvil PWA"
           >
-            <Share2 className="h-3 w-3" />
-            <span className="hidden sm:inline">Instalar PWA</span>
+            <Share2 className="h-3.5 w-3.5 shrink-0" />
+            <span className="hidden lg:inline">Instalar</span>
           </button>
 
           {/* Salir / Cerrar */}
           {onClose && (
             <button
               onClick={onClose}
-              className="p-2 text-neutral-400 hover:text-white bg-neutral-800/60 border border-neutral-700/60 rounded-xl cursor-pointer"
+              className="p-1.5 text-neutral-300 hover:text-white bg-neutral-800/80 border border-neutral-700/80 hover:bg-rose-900/50 hover:border-rose-700 rounded-xl cursor-pointer transition-all shrink-0"
               title="Salir de Modo Silla"
             >
-              <X className="h-5 w-5" />
+              <X className="h-4 w-4" />
             </button>
           )}
         </div>
@@ -621,50 +686,6 @@ export default function ModoSillaPWA({
 
       {/* CONTENIDO PRINCIPAL MÓVIL */}
       <div className="flex-1 max-w-lg mx-auto w-full p-4 space-y-4 pb-28">
-
-        {/* Banner de Notificaciones Push & WhatsApp */}
-        <PushNotificationBanner 
-          config={config} 
-          barber={barbers.find(b => b.id === loggedBarberId)}
-        />
-
-        {/* Global Announcements Banner */}
-        {visibleAnnouncements.length > 0 && (
-          <div className="space-y-2">
-            {visibleAnnouncements.map((ann) => (
-              <div
-                key={ann.id}
-                className={`p-3.5 rounded-2xl border text-left flex items-start justify-between gap-3 shadow-lg ${
-                  ann.type === "alert"
-                    ? "bg-rose-950/90 border-rose-600/70 text-rose-100"
-                    : ann.type === "warning"
-                    ? "bg-amber-950/90 border-amber-600/70 text-amber-100"
-                    : ann.type === "success"
-                    ? "bg-emerald-950/90 border-emerald-600/70 text-emerald-100"
-                    : "bg-sky-950/90 border-sky-600/70 text-sky-100"
-                }`}
-              >
-                <div className="flex items-start gap-2.5 flex-1">
-                  <Megaphone className="h-5 w-5 text-amber-400 shrink-0 mt-0.5 animate-bounce" />
-                  <div className="space-y-0.5">
-                    <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-white/15 tracking-wider border border-white/20 inline-block mb-1">
-                      {ann.type === "alert" ? "🚨 Urgente" : ann.type === "warning" ? "⚠️ Aviso" : ann.type === "success" ? "🎉 Novedad" : "📢 Anuncio"}
-                    </span>
-                    <h4 className="text-xs font-bold text-white leading-tight">{ann.title}</h4>
-                    <p className="text-[11px] opacity-90 leading-normal font-sans">{ann.message}</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setDismissedAnnouncements(prev => [...prev, ann.id])}
-                  className="p-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg border border-white/20 shrink-0 cursor-pointer"
-                  title="Descartar"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
 
         {/* SELECTOR DE BARBERO Y FECHA DE TURNOS */}
         <div className="space-y-3">
@@ -851,8 +872,8 @@ export default function ModoSillaPWA({
           <div className="bg-[#15151C] border border-amber-500/30 rounded-3xl p-4 sm:p-5 space-y-4 shadow-2xl relative overflow-hidden">
             
             {/* Banner Superior de Cliente & Acciones Rápidas */}
-            <div className="border-b border-neutral-800 pb-3 space-y-2">
-              <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5">
+            <div className="border-b border-neutral-800 pb-3.5 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 {/* Info del cliente */}
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-neutral-800 to-neutral-700 border border-amber-500/40 flex items-center justify-center text-amber-400 text-base font-extrabold shrink-0 relative shadow-inner">
@@ -863,19 +884,21 @@ export default function ModoSillaPWA({
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <h3 className="text-base font-extrabold text-white leading-tight truncate">
+                    <h3 className="text-base font-extrabold text-white leading-tight break-words">
                       {displayClient.name}
                     </h3>
-                    <div className="flex items-center gap-1.5 text-xs text-neutral-400 truncate">
-                      <span className="font-mono text-amber-400 font-bold shrink-0">{formatTime(activeAppointment.time)}</span>
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs text-neutral-400 mt-0.5">
+                      <span className="font-mono text-amber-400 font-bold bg-amber-500/10 px-1.5 py-0.5 rounded-md border border-amber-500/30 shrink-0">
+                        {formatTime(activeAppointment.time)}
+                      </span>
                       <span>•</span>
-                      <span className="truncate">{activeAppointment.serviceName}</span>
+                      <span className="text-neutral-300 font-medium">{activeAppointment.serviceName}</span>
                     </div>
                   </div>
                 </div>
 
                 {/* Botones rápidos organizados: Reasignar Silla Express + WhatsApp */}
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
                   {activeAppointment.status !== "completed" && (
                     <button
                       onClick={() => {
@@ -883,7 +906,7 @@ export default function ModoSillaPWA({
                         setReassignReason("");
                         setShowReassignModal(true);
                       }}
-                      className="px-2.5 py-1.5 bg-cyan-950/90 hover:bg-cyan-900 border border-cyan-500/60 text-cyan-300 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-md active:scale-95 text-[11px] font-extrabold"
+                      className="px-3 py-2 bg-cyan-950/90 hover:bg-cyan-900 border border-cyan-500/60 text-cyan-300 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-md active:scale-95 text-xs font-extrabold"
                       title="Reasignación Express de Silla / Barbero"
                     >
                       <RefreshCw className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
@@ -896,7 +919,7 @@ export default function ModoSillaPWA({
                       href={`https://wa.me/${cleanPhone}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="px-2.5 py-1.5 bg-emerald-950/90 hover:bg-emerald-900 border border-emerald-500/60 text-emerald-300 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-md active:scale-95 text-[11px] font-extrabold"
+                      className="px-3 py-2 bg-emerald-950/90 hover:bg-emerald-900 border border-emerald-500/60 text-emerald-300 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-md active:scale-95 text-xs font-extrabold"
                       title="Abrir WhatsApp del cliente"
                     >
                       <MessageSquare className="h-3.5 w-3.5 text-emerald-400 shrink-0" />

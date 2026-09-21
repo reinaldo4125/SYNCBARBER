@@ -1,4 +1,5 @@
 // Utility for Web Push Notifications & WhatsApp Notification links
+import { addNotificationToHistory, LoggedNotification } from "./notificationHistory";
 
 export interface AppointmentNotificationData {
   clientName: string;
@@ -102,12 +103,35 @@ export interface CustomNotificationOptions extends NotificationOptions {
   vibrate?: number[];
   url?: string;
   badge?: string;
+  type?: LoggedNotification['type'];
+  metadata?: LoggedNotification['metadata'];
 }
 
 /**
  * Show a native Web Push notification (works even when tab is backgrounded)
  */
 export async function showPushNotification(title: string, options?: CustomNotificationOptions): Promise<boolean> {
+  // Always log into persistent history log so notifications are permanently recorded
+  try {
+    addNotificationToHistory({
+      type: options?.type || 'new_booking',
+      title,
+      message: options?.body || '',
+      metadata: options?.metadata
+    });
+  } catch (e) {
+    console.warn("Error archiving notification:", e);
+  }
+
+  // Trigger hardware vibration if supported on mobile device
+  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+    try {
+      navigator.vibrate(options?.vibrate || [400, 150, 400, 150, 400, 150, 400]);
+    } catch (e) {
+      // Ignored if device does not allow vibration without direct gesture
+    }
+  }
+
   if (!isPushNotificationSupported()) return false;
   if (Notification.permission !== 'granted') return false;
 
@@ -118,15 +142,26 @@ export async function showPushNotification(title: string, options?: CustomNotifi
         body: options?.body || 'Nueva notificación de SYNCBARBER',
         icon: options?.icon || '/favicon.svg',
         badge: options?.badge || '/favicon.svg',
-        vibrate: options?.vibrate || [200, 100, 200, 100, 200],
+        vibrate: options?.vibrate || [400, 150, 400, 150, 400, 150, 400],
         tag: options?.tag || `syncbarber-notif-${Date.now()}`,
+        renotify: true,
+        requireInteraction: options?.requireInteraction !== false, // Stays visible until user dismisses
+        actions: (options as any)?.actions || [
+          { action: 'open', title: '💈 Abrir Barbería' },
+          { action: 'dismiss', title: '🔇 Descartar' }
+        ],
         data: { url: options?.url || '/' },
         ...(options as any)
       } as any);
       return true;
     } else {
       // Fallback to standard Notification API
-      new Notification(title, options as any);
+      new Notification(title, {
+        body: options?.body || 'Nueva notificación de SYNCBARBER',
+        icon: options?.icon || '/favicon.svg',
+        requireInteraction: options?.requireInteraction !== false,
+        ...(options as any)
+      } as any);
       return true;
     }
   } catch (err) {

@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { Bell, BellOff, CheckCircle2, MessageCircle, Sparkles, Send, ChevronDown, ChevronUp, X } from "lucide-react";
+import { Bell, BellOff, CheckCircle2, MessageCircle, Sparkles, Send, ChevronDown, ChevronUp, X, Volume2, Clock } from "lucide-react";
 import { 
   getNotificationPermissionState, 
   requestNotificationPermission, 
   showPushNotification,
   getWhatsAppNotificationUrl
 } from "../utils/pushNotifications";
+import { playNotificationSound, NotificationType } from "../utils/notificationSound";
 import { SalonConfig, Barber } from "../types";
 
 interface PushNotificationBannerProps {
@@ -34,7 +35,11 @@ export default function PushNotificationBanner({
   // Expandable & Dismissible state
   const [isExpanded, setIsExpanded] = useState(false);
   const [isDismissed, setIsDismissed] = useState(() => {
-    return sessionStorage.getItem("syncbarber_push_banner_dismissed") === "true";
+    try {
+      return localStorage.getItem("syncbarber_push_banner_dismissed") === "true" || sessionStorage.getItem("syncbarber_push_banner_dismissed") === "true";
+    } catch {
+      return false;
+    }
   });
 
   useEffect(() => {
@@ -50,7 +55,12 @@ export default function PushNotificationBanner({
 
   const handleDismiss = () => {
     setIsDismissed(true);
-    sessionStorage.setItem("syncbarber_push_banner_dismissed", "true");
+    try {
+      localStorage.setItem("syncbarber_push_banner_dismissed", "true");
+      sessionStorage.setItem("syncbarber_push_banner_dismissed", "true");
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const handleEnablePush = async () => {
@@ -68,8 +78,8 @@ export default function PushNotificationBanner({
 
   const handleTestPush = async () => {
     setTestingPush(true);
-    const sent = await showPushNotification("🚨 ¡Nueva Cita de Prueba! 💈", {
-      body: "Cliente: Juan Pérez | Servicio: Corte Fade + Barba | Hora: 4:00 PM",
+    const sent = await showPushNotification("🚨 [PRUEBA] Notificación de Test 💈", {
+      body: "(Simulación de prueba - No es cita real en tu agenda) • Cliente demo: Juan Pérez | Corte Fade + Barba",
       vibrate: [300, 100, 300, 100, 300]
     });
     setTestingPush(false);
@@ -108,7 +118,7 @@ export default function PushNotificationBanner({
   }) : "";
 
   return (
-    <div className="bg-gradient-to-r from-[#12121D] via-[#181826] to-[#12121D] border border-amber-500/30 rounded-2xl p-3 shadow-lg my-2 text-white transition-all">
+    <div className="bg-[#12121D]/90 border border-amber-500/25 rounded-xl px-3 py-2 shadow-xs my-1 text-white transition-all">
       {/* Header bar (compact 1-liner) */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2.5 min-w-0">
@@ -188,6 +198,26 @@ export default function PushNotificationBanner({
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => playNotificationSound("new_booking")}
+                className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 active:scale-95"
+                title="Probar sonido de nueva cita"
+              >
+                <Volume2 className="h-3 w-3 text-amber-400" />
+                <span>Probar Timbre</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => playNotificationSound("30min_reminder")}
+                className="px-2.5 py-1 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 active:scale-95"
+                title="Probar timbre de alerta a 30 minutos"
+              >
+                <Clock className="h-3 w-3 text-sky-400" />
+                <span>Alerta 30 min</span>
+              </button>
+
               {testWhatsAppUrl && (
                 <a
                   href={testWhatsAppUrl}

@@ -19,7 +19,10 @@ import {
   Cpu,
   Linkedin,
   Package,
-  Wine
+  Wine,
+  Menu,
+  LogOut,
+  ChevronRight
 } from "lucide-react";
 import ClientDashboard from "./components/ClientDashboard";
 import AdminDashboard from "./components/AdminDashboard";
@@ -41,8 +44,14 @@ import ModoKiosco from "./components/ModoKiosco";
 import CierreCajaModal from "./components/CierreCajaModal";
 import CatalogManager from "./components/CatalogManager";
 import VersionModal from "./components/VersionModal";
+import NotificationBell from "./components/NotificationBell";
+import ActiveAlarmBanner from "./components/ActiveAlarmBanner";
 import { CURRENT_APP_VERSION } from "./data/versionHistory";
 import { Camera } from "lucide-react";
+import { playNotificationSound, NotificationType } from "./utils/notificationSound";
+import { showPushNotification } from "./utils/pushNotifications";
+import { use30MinReminderEngine } from "./utils/use30MinReminderEngine";
+import { useShiftStartEngine } from "./utils/useShiftStartEngine";
 
 interface RealTimeToast {
   id: string;
@@ -176,50 +185,23 @@ export default function App() {
 
   // Toast notifications
   const [toasts, setToasts] = useState<RealTimeToast[]>([]);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Sound chime for notifications (using Web Audio API so it's fully client-side and doesn't rely on external assets)
-  const playNotificationSound = () => {
-    try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      
-      // Chime note 1
-      const osc1 = audioCtx.createOscillator();
-      const gain1 = audioCtx.createGain();
-      osc1.connect(gain1);
-      gain1.connect(audioCtx.destination);
-      osc1.type = "sine";
-      osc1.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
-      gain1.gain.setValueAtTime(0.15, audioCtx.currentTime);
-      gain1.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
-      osc1.start(audioCtx.currentTime);
-      osc1.stop(audioCtx.currentTime + 0.4);
-
-      // Chime note 2 slightly staggered
-      setTimeout(() => {
-        const osc2 = audioCtx.createOscillator();
-        const gain2 = audioCtx.createGain();
-        osc2.connect(gain2);
-        gain2.connect(audioCtx.destination);
-        osc2.type = "sine";
-        osc2.frequency.setValueAtTime(659.25, audioCtx.currentTime); // E5
-        gain2.gain.setValueAtTime(0.15, audioCtx.currentTime);
-        gain2.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
-        osc2.start(audioCtx.currentTime);
-        osc2.stop(audioCtx.currentTime + 0.4);
-      }, 100);
-    } catch (e) {
-      console.warn("Audio Context not allowed or failed:", e);
-    }
-  };
-
-  // Toast controller
-  const triggerToast = (title: string, message: string, type: "success" | "info" | "warning" = "info") => {
+  // Toast controller with audio chime sound options
+  const triggerToast = (
+    title: string, 
+    message: string, 
+    type: "success" | "info" | "warning" = "info",
+    soundType: NotificationType = "new_booking"
+  ) => {
     const id = Date.now().toString();
     const newToast: RealTimeToast = { id, title, message, type };
     setToasts((prev) => [...prev, newToast]);
-    playNotificationSound();
+    
+    // Play synthesized Web Audio chime
+    playNotificationSound(soundType);
 
-    // Auto delete after 5 seconds
+    // Auto delete after 5.5 seconds
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 5500);
@@ -228,6 +210,29 @@ export default function App() {
   const removeToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
+
+  // Real-time 30-Minute Advance Reminder Engine
+  use30MinReminderEngine({
+    appointments,
+    onTriggerToast: (title, message, type) => {
+      triggerToast(title, message, type || "warning", "30min_reminder");
+    },
+    salonName: config.name || "Barbería",
+    loggedBarberId: loggedUser?.barberId || loggedUser?.id,
+    role: loggedUser?.role || currentRole
+  });
+
+  // Shift Start Alarm & Daily Schedule Count Engine
+  useShiftStartEngine({
+    appointments,
+    barbers,
+    loggedBarberId: loggedUser?.barberId || loggedUser?.id,
+    role: loggedUser?.role || currentRole,
+    salonName: config.name || "Barbería",
+    onTriggerToast: (title, message, type) => {
+      triggerToast(title, message, type || "success", "shift_start");
+    }
+  });
 
   // Server-Sent Events (SSE) Real-Time Listener
   useEffect(() => {
@@ -314,14 +319,50 @@ export default function App() {
             triggerToast("Catálogo Actualizado", "Los precios y servicios de peluquería han sido actualizados en vivo.", "info");
           } else if (type === "appointment_created") {
             setAppointments(data.appointments);
-            // Notify if admin
-            triggerToast(
-              "Nueva Cita Solicitada", 
-              `Cliente: ${data.appointment.clientName} agendó para ${data.appointment.serviceName} a las ${data.appointment.time}.`, 
-              "success"
-            );
+
+            const activeBarberId = loggedUser?.barberId || loggedUser?.id;
+            const isAssignedToMe = activeBarberId && data.appointment.barberId === activeBarberId;
+            const isStaff = (loggedUser && (loggedUser.role === "admin" || loggedUser.role === "barber")) || currentRole === "admin" || currentRole === "barber";
+
+            const notifTitle = isAssignedToMe 
+              ? "🚨 ¡Nueva Cita Asignada a Ti! 💈" 
+              : "💈 ¡Nueva Cita Agendada!";
+
+            const barberSuffix = data.appointment.barberName ? ` • Con ${data.appointment.barberName}` : "";
+            const notifBody = `Cliente: ${data.appointment.clientName} | ${data.appointment.serviceName} a las ${data.appointment.time}${barberSuffix}`;
+
+            // Notify staff members in-app with audible chime
+            if (isStaff) {
+              triggerToast(
+                notifTitle, 
+                notifBody, 
+                "success",
+                "new_booking"
+              );
+              // Native Web Push Notification (works with tab in background / locked phone)
+              showPushNotification(notifTitle, {
+                body: notifBody,
+                tag: `new-app-${data.appointment.id}`,
+                vibrate: [400, 150, 400, 150, 400],
+                requireInteraction: true
+              });
+            }
           } else if (type === "appointment_updated") {
             setAppointments(data.appointments);
+
+            // Check if client just checked in
+            if (data.appointment.checkedIn) {
+              triggerToast(
+                "📍 ¡Cliente Llegó al Local!",
+                `El cliente ${data.appointment.clientName} hizo Check-In en recepción.`,
+                "info",
+                "checkin_arrived"
+              );
+              showPushNotification("📍 ¡Cliente en Recepción! 💈", {
+                body: `El cliente ${data.appointment.clientName} acaba de llegar para su cita de las ${data.appointment.time}`,
+                tag: `checkin-${data.appointment.id}`
+              });
+            }
 
             // Check if this updated appointment is owned by the client
             const savedIdsStr = localStorage.getItem("bella_barba_appointments");
@@ -341,7 +382,6 @@ export default function App() {
                 data.appointment.status === "confirmed" ? "success" : data.appointment.status === "canceled" ? "warning" : "info"
               );
             } else {
-              // General update (useful for refreshing slots in client view)
               console.log("[SSE Sync] Cita actualizada:", data.appointment.id);
             }
           } else if (type === "appointment_deleted") {
@@ -832,233 +872,646 @@ export default function App() {
         }
       `}</style>
       
-      {/* 1. Header Superior & Switch de Roles */}
+      {/* 1. Header Superior & Switch de Roles con Menú Hamburguesa para Móvil */}
       <header className="sticky top-0 z-40 w-full bg-elegant-card/95 backdrop-blur-md border-b border-elegant-border shadow-md">
-        <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 md:h-16 flex flex-col md:flex-row items-center justify-between gap-3 md:gap-4">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-3">
           
           {/* Logo SYNCBARBER & Salon Info */}
-          <div className="flex items-center justify-between w-full md:w-auto gap-3 shrink-0">
-            <div className="flex items-center space-x-2.5">
-              <SyncBarberLogo size={34} showText={true} />
-              <div className="h-7 w-[1px] bg-elegant-border hidden xs:block" />
-              
-              <div className="flex items-center gap-2">
-                {config.customLogoUrl && (
-                  <div className="h-7 w-7 rounded-full bg-elegant-sub border border-elegant-border flex items-center justify-center text-sm overflow-hidden shrink-0">
-                    {config.customLogoUrl.startsWith("http") || config.customLogoUrl.startsWith("data:image") ? (
-                      <img src={config.customLogoUrl} alt={config.name} className="h-full w-full object-cover" />
-                    ) : (
-                      <span className="font-sans leading-none">{config.customLogoUrl}</span>
-                    )}
-                  </div>
-                )}
-                
-                <div className="flex flex-col">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-extrabold text-xs sm:text-sm tracking-tight text-white font-sans block max-w-[100px] xs:max-w-[140px] sm:max-w-none truncate">
-                      {config.name || "Barberia Demo"}
-                    </span>
-                    <button
-                      onClick={() => setShowVersionModal(true)}
-                      className="text-[8.5px] font-mono font-extrabold text-amber-300 bg-amber-950/90 border border-amber-800/80 px-1.5 py-0.2 rounded-full hover:bg-amber-900 transition-all cursor-pointer shrink-0 shadow-xs"
-                      title="Ver registro de versión y novedades"
-                    >
-                      {CURRENT_APP_VERSION}
-                    </button>
-                  </div>
-                  {config.tagline ? (
-                    <p className="text-[7px] sm:text-[9px] text-elegant-gold font-bold uppercase mt-0.5 leading-none max-w-[140px] xs:max-w-[200px] sm:max-w-xs truncate" title={config.tagline}>
-                      {config.tagline}
-                    </p>
+          <div className="flex items-center space-x-2.5 min-w-0">
+            <SyncBarberLogo size={34} showText={true} />
+            <div className="h-7 w-[1px] bg-elegant-border hidden xs:block" />
+            
+            <div className="flex items-center gap-2 min-w-0">
+              {config.customLogoUrl && (
+                <div className="h-7 w-7 rounded-full bg-elegant-sub border border-elegant-border flex items-center justify-center text-sm overflow-hidden shrink-0">
+                  {config.customLogoUrl.startsWith("http") || config.customLogoUrl.startsWith("data:image") ? (
+                    <img src={config.customLogoUrl} alt={config.name} className="h-full w-full object-cover" />
                   ) : (
-                    <p className="text-[7px] sm:text-[9px] text-elegant-gold font-bold tracking-widest uppercase mt-0.5 leading-none">
-                      Inquilino En Vivo
-                    </p>
+                    <span className="font-sans leading-none">{config.customLogoUrl}</span>
                   )}
                 </div>
+              )}
+              
+              <div className="flex flex-col min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-extrabold text-xs sm:text-sm tracking-tight text-white font-sans block max-w-[110px] xs:max-w-[150px] sm:max-w-none truncate">
+                    {config.name || "Barberia Demo"}
+                  </span>
+                  <button
+                    onClick={() => setShowVersionModal(true)}
+                    className="text-[8.5px] font-mono font-extrabold text-amber-300 bg-amber-950/90 border border-amber-800/80 px-1.5 py-0.2 rounded-full hover:bg-amber-900 transition-all cursor-pointer shrink-0 shadow-xs"
+                    title="Ver registro de versión y novedades"
+                  >
+                    {CURRENT_APP_VERSION}
+                  </button>
+                </div>
+                {config.tagline ? (
+                  <p className="text-[7.5px] sm:text-[9px] text-elegant-gold font-bold uppercase mt-0.5 leading-none max-w-[130px] xs:max-w-[190px] sm:max-w-xs truncate" title={config.tagline}>
+                    {config.tagline}
+                  </p>
+                ) : (
+                  <p className="text-[7.5px] sm:text-[9px] text-elegant-gold font-bold tracking-widest uppercase mt-0.5 leading-none">
+                    Inquilino En Vivo
+                  </p>
+                )}
               </div>
-            </div>
-
-            {/* Quick action for mobile */}
-            <div className="flex items-center space-x-1.5 md:hidden">
-              <button
-                onClick={openDuplicateTab}
-                className="p-1.5 border border-elegant-border rounded-xl bg-elegant-sub hover:bg-elegant-border text-elegant-text transition-all active:scale-95 cursor-pointer flex items-center justify-center"
-                title="Probar en otra pestaña"
-              >
-                <Share2 className="h-3.5 w-3.5" />
-              </button>
             </div>
           </div>
 
-          {/* Selector de Roles Principal - Desplazable horizontalmente en celulares */}
-          <div className="bg-elegant-sub p-1 rounded-2xl flex items-center space-x-1 border border-elegant-border overflow-x-auto max-w-full scrollbar-none shrink-0 self-stretch md:self-auto">
-            {activeTenantId === "bella-barba" && (
-              <button
-                onClick={() => {
-                  if (currentRole !== "syncbarber") {
-                    setCurrentRole("syncbarber");
-                  }
-                }}
-                className={`px-2.5 py-1.5 xs:px-3 rounded-xl text-[10px] xs:text-xs font-bold flex items-center gap-1 sm:gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-                  currentRole === "syncbarber"
-                    ? "bg-cyan-500 text-elegant-bg shadow-xs font-extrabold"
-                    : "text-elegant-text-muted hover:text-cyan-400"
-                }`}
-              >
-                <Sparkles className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                <span>Conoce SYNCBARBER</span>
-              </button>
+          {/* Acciones para Móvil & Tablet: Campana + Botón Hamburguesa (ÚNICAMENTE EN MÓVIL) */}
+          <div className="flex items-center space-x-2 xl:hidden shrink-0">
+            {((loggedUser && (loggedUser.role === "admin" || loggedUser.role === "barber")) || currentRole === "admin" || currentRole === "barber") && (
+              <NotificationBell
+                announcements={announcements}
+                config={config}
+                barber={barbers.find(b => b.id === (loggedUser?.barberId || loggedUser?.id))}
+                appointments={appointments}
+                barbers={barbers}
+                onUpdateConfig={handleUpdateConfig}
+                onUpdateBarber={handleUpdateBarber}
+                loggedBarberId={loggedUser?.barberId || loggedUser?.id}
+                isMobileHeader={true}
+              />
             )}
 
+            {/* Botón de Menú Hamburguesa */}
             <button
-              onClick={() => {
-                if (currentRole !== "client") {
-                  setCurrentRole("client");
-                }
-              }}
-              className={`px-2.5 py-1.5 xs:px-3 rounded-xl text-[10px] xs:text-xs font-bold flex items-center gap-1 sm:gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-                currentRole === "client"
-                  ? "bg-elegant-gold text-elegant-bg shadow-xs font-extrabold"
-                  : "text-elegant-text-muted hover:text-elegant-text"
+              onClick={() => setMobileMenuOpen(prev => !prev)}
+              className={`p-2 rounded-xl border transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5 ${
+                mobileMenuOpen
+                  ? "bg-elegant-gold text-elegant-bg border-elegant-gold shadow-md font-bold"
+                  : "bg-elegant-sub text-elegant-text border-elegant-border hover:bg-elegant-border"
               }`}
+              title={mobileMenuOpen ? "Cerrar menú" : "Abrir menú de navegación"}
+              aria-label="Menú principal móvil"
             >
-              <User className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-              <span>Vista Cliente</span>
+              {mobileMenuOpen ? (
+                <X className="h-5 w-5" />
+              ) : (
+                <Menu className="h-5 w-5" />
+              )}
             </button>
+          </div>
 
-            {!loggedUser ? (
+          {/* Fila Desktop: Selector de Roles y Acciones Rápidas (VISIBLE SOLO EN PANTALLAS GRANDES) */}
+          <div className="hidden xl:flex items-center justify-end gap-2 w-auto">
+            {/* Selector de Roles Principal Desktop */}
+            <div className="bg-elegant-sub p-1 rounded-2xl flex items-center gap-1 border border-elegant-border max-w-full">
+              {activeTenantId === "bella-barba" && (
+                <button
+                  onClick={() => {
+                    if (currentRole !== "syncbarber") {
+                      setCurrentRole("syncbarber");
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                    currentRole === "syncbarber"
+                      ? "bg-cyan-500 text-elegant-bg shadow-xs font-extrabold"
+                      : "text-elegant-text-muted hover:text-cyan-400"
+                  }`}
+                >
+                  <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                  <span>Conoce SYNCBARBER</span>
+                </button>
+              )}
+
               <button
-                onClick={() => setCurrentRole("login")}
-                className={`px-2.5 py-1.5 xs:px-3 rounded-xl text-[10px] xs:text-xs font-bold flex items-center gap-1 sm:gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-                  currentRole === "login"
+                onClick={() => {
+                  if (currentRole !== "client") {
+                    setCurrentRole("client");
+                  }
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                  currentRole === "client"
                     ? "bg-elegant-gold text-elegant-bg shadow-xs font-extrabold"
                     : "text-elegant-text-muted hover:text-elegant-text"
                 }`}
               >
-                <Shield className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                <span>Ingreso Personal</span>
+                <User className="h-3.5 w-3.5 shrink-0" />
+                <span>Vista Cliente</span>
               </button>
-            ) : (
-              <>
+
+              {!loggedUser ? (
                 <button
-                  onClick={() => setCurrentRole(loggedUser.role)}
-                  className={`px-2.5 py-1.5 xs:px-3 rounded-xl text-[10px] xs:text-xs font-bold flex items-center gap-1 sm:gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-                    currentRole === "admin" || currentRole === "barber"
+                  onClick={() => setCurrentRole("login")}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                    currentRole === "login"
                       ? "bg-elegant-gold text-elegant-bg shadow-xs font-extrabold"
                       : "text-elegant-text-muted hover:text-elegant-text"
                   }`}
                 >
-                  <Shield className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                  <span>
-                    {loggedUser.role === "admin" ? "Panel" : `${loggedUser.name.split(" ")[0]}`}
-                  </span>
+                  <Shield className="h-3.5 w-3.5 shrink-0" />
+                  <span>Ingreso Personal</span>
                 </button>
-                <button
-                  onClick={handleLogout}
-                  className="px-2 py-1 border border-rose-950 hover:bg-rose-950/40 text-rose-400 rounded-xl text-[9px] font-bold cursor-pointer transition-colors whitespace-nowrap"
-                >
-                  Salir
-                </button>
-              </>
-            )}
+              ) : (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setCurrentRole(loggedUser.role)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                      currentRole === "admin" || currentRole === "barber"
+                        ? "bg-elegant-gold text-elegant-bg shadow-xs font-extrabold"
+                        : "text-elegant-text-muted hover:text-elegant-text"
+                    }`}
+                  >
+                    <Shield className="h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      {loggedUser.role === "admin" ? "Panel" : `${loggedUser.name.split(" ")[0]}`}
+                    </span>
+                  </button>
+                  <button
+                    onClick={handleLogout}
+                    className="px-2.5 py-1.5 bg-rose-950/80 hover:bg-rose-900 border border-rose-800/80 text-rose-300 rounded-xl text-[10px] font-extrabold cursor-pointer transition-all active:scale-95 shadow-xs whitespace-nowrap"
+                    title="Cerrar Sesión / Salir"
+                  >
+                    Salir
+                  </button>
+                </div>
+              )}
 
-            {currentRole === "developer" && (
-              <button
-                onClick={() => setCurrentRole("developer")}
-                className="px-2.5 py-1.5 xs:px-3 rounded-xl text-[10px] xs:text-xs font-bold flex items-center gap-1 sm:gap-1.5 transition-all cursor-pointer whitespace-nowrap bg-amber-500 text-elegant-bg shadow-xs font-extrabold"
-              >
-                <Cpu className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                <span>Desarrollador</span>
-              </button>
-            )}
+              {currentRole === "developer" && (
+                <button
+                  onClick={() => setCurrentRole("developer")}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap bg-amber-500 text-elegant-bg shadow-xs font-extrabold"
+                >
+                  <Cpu className="h-3.5 w-3.5 shrink-0" />
+                  <span>Dev</span>
+                </button>
+              )}
+            </div>
+
+            {/* Botones de acción rápidos Desktop */}
+            {(() => {
+              const activeLicense = config.licenseType || "premium";
+              const isStaffUser = loggedUser && (loggedUser.role === "admin" || loggedUser.role === "barber" || loggedUser.role === "developer");
+              const isStaffView = currentRole === "admin" || currentRole === "barber" || currentRole === "developer";
+              const isBarberOrStaff = isStaffUser || isStaffView;
+
+              const supportsModoSilla = activeLicense === "profesional" || activeLicense === "premium";
+              const supportsKiosco = activeLicense === "premium";
+              const supportsCierreCaja = activeLicense === "profesional" || activeLicense === "premium";
+
+              const canShowModoSilla = isBarberOrStaff && supportsModoSilla;
+              const canShowKiosco = isBarberOrStaff && supportsKiosco;
+              const canShowCierreCaja = isBarberOrStaff && supportsCierreCaja;
+              const canShowProbarRealTime = currentRole === "developer" || (loggedUser && loggedUser.role === "developer") || (loggedUser && loggedUser.role === "admin");
+              const canShowSincro = isBarberOrStaff || !!loggedUser;
+              const canShowBell = (loggedUser && (loggedUser.role === "admin" || loggedUser.role === "barber")) || currentRole === "admin" || currentRole === "barber";
+
+              return (
+                <div className="flex items-center space-x-2 shrink-0">
+                  {canShowModoSilla && (
+                    <button
+                      onClick={() => setIsModoSillaActive(true)}
+                      className="px-2.5 py-1.5 bg-gradient-to-r from-amber-600/30 to-amber-500/20 border border-amber-500/50 hover:bg-amber-500/30 text-amber-300 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm whitespace-nowrap"
+                      title="Abrir Vista Móvil PWA para Barberos en Silla"
+                    >
+                      <Smartphone className="h-3.5 w-3.5 text-amber-400 animate-pulse" />
+                      <span>📱 Modo Silla</span>
+                    </button>
+                  )}
+
+                  {canShowKiosco && (
+                    <button
+                      onClick={() => setShowKioscoModal(true)}
+                      className="px-2.5 py-1.5 bg-cyan-950/40 border border-cyan-800/60 hover:bg-cyan-900/40 text-cyan-300 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm whitespace-nowrap"
+                      title="Abrir Kiosco de Check-in Recepción (Pantalla TV)"
+                    >
+                      <span>📺 Kiosco</span>
+                    </button>
+                  )}
+
+                  {canShowCierreCaja && (
+                    <button
+                      onClick={() => setShowCierreCajaModal(true)}
+                      className="px-2.5 py-1.5 bg-emerald-950/40 border border-emerald-800/60 hover:bg-emerald-900/40 text-emerald-300 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm whitespace-nowrap"
+                      title="Abrir Arqueo y Cierre de Caja Automatizado"
+                    >
+                      <span>💰 Cierre Caja</span>
+                    </button>
+                  )}
+
+                  {canShowSincro && (
+                    <div 
+                      className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold font-mono whitespace-nowrap ${
+                        isConnected 
+                          ? "bg-emerald-950/40 text-emerald-400 border border-emerald-800/50" 
+                          : "bg-amber-950/40 text-amber-400 border border-amber-800/50 animate-pulse"
+                      }`}
+                      title={isConnected ? "Sincronizado en tiempo real" : "Conexión inestable..."}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? "bg-emerald-500" : "bg-amber-500 animate-ping"}`}></span>
+                      <span>{isConnected ? "SINCRO" : "RECONECTANDO"}</span>
+                    </div>
+                  )}
+
+                  {canShowBell && (
+                    <div className="flex items-center">
+                      <NotificationBell
+                        announcements={announcements}
+                        config={config}
+                        barber={barbers.find(b => b.id === (loggedUser?.barberId || loggedUser?.id))}
+                        appointments={appointments}
+                        barbers={barbers}
+                        onUpdateConfig={handleUpdateConfig}
+                        onUpdateBarber={handleUpdateBarber}
+                        loggedBarberId={loggedUser?.barberId || loggedUser?.id}
+                      />
+                    </div>
+                  )}
+
+                  {canShowProbarRealTime && (
+                    <button
+                      onClick={openDuplicateTab}
+                      className="p-2 border border-elegant-border rounded-xl bg-elegant-sub hover:bg-elegant-border text-elegant-text transition-colors active:scale-95 cursor-pointer flex items-center justify-center whitespace-nowrap"
+                      title="Abrir otra pestaña para probar en tiempo real"
+                    >
+                      <Share2 className="h-4 w-4" />
+                      <span className="inline text-[10px] font-bold ml-1.5 uppercase">Probar Real-time</span>
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
-          {/* Botones de acción rápidos para Desktop / Mobile (filtrados por Perfil y Licencia) */}
-          {(() => {
-            const activeLicense = config.licenseType || "premium";
-            const isStaffUser = loggedUser && (loggedUser.role === "admin" || loggedUser.role === "barber" || loggedUser.role === "developer");
-            const isStaffView = currentRole === "admin" || currentRole === "barber" || currentRole === "developer";
-            const isAdminOrDev = (loggedUser && (loggedUser.role === "admin" || loggedUser.role === "developer")) || currentRole === "admin" || currentRole === "developer";
-            const isBarberOrStaff = isStaffUser || isStaffView;
-
-            const supportsModoSilla = activeLicense === "profesional" || activeLicense === "premium";
-            const supportsKiosco = activeLicense === "premium";
-            const supportsCierreCaja = activeLicense === "profesional" || activeLicense === "premium";
-
-            const canShowModoSilla = isBarberOrStaff && supportsModoSilla;
-            const canShowKiosco = isAdminOrDev && supportsKiosco;
-            const canShowCierreCaja = isBarberOrStaff && supportsCierreCaja;
-            const canShowProbarRealTime = currentRole === "developer" || (loggedUser && loggedUser.role === "developer") || (loggedUser && loggedUser.role === "admin");
-            const canShowSincro = isBarberOrStaff || !!loggedUser;
-
-            return (
-              <div className="flex items-center space-x-2 shrink-0">
-                {/* Botón PWA Modo Silla */}
-                {canShowModoSilla && (
-                  <button
-                    onClick={() => setIsModoSillaActive(true)}
-                    className="px-2.5 py-1.5 bg-gradient-to-r from-amber-600/30 to-amber-500/20 border border-amber-500/50 hover:bg-amber-500/30 text-amber-300 rounded-xl text-[10px] xs:text-xs font-extrabold flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
-                    title="Abrir Vista Móvil PWA para Barberos en Silla"
-                  >
-                    <Smartphone className="h-3.5 w-3.5 text-amber-400 animate-pulse" />
-                    <span>📱 Modo Silla</span>
-                  </button>
-                )}
-
-                {/* Botón Kiosco Recepción */}
-                {canShowKiosco && (
-                  <button
-                    onClick={() => setShowKioscoModal(true)}
-                    className="px-2.5 py-1.5 bg-cyan-950/40 border border-cyan-800/60 hover:bg-cyan-900/40 text-cyan-300 rounded-xl text-[10px] xs:text-xs font-extrabold flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
-                    title="Abrir Kiosco de Check-in Recepción (Pantalla TV)"
-                  >
-                    <span>📺 Kiosco</span>
-                  </button>
-                )}
-
-                {/* Botón Cierre de Caja */}
-                {canShowCierreCaja && (
-                  <button
-                    onClick={() => setShowCierreCajaModal(true)}
-                    className="px-2.5 py-1.5 bg-emerald-950/40 border border-emerald-800/60 hover:bg-emerald-900/40 text-emerald-300 rounded-xl text-[10px] xs:text-xs font-extrabold flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
-                    title="Abrir Arqueo y Cierre de Caja Automatizado"
-                  >
-                    <span>💰 Cierre Caja</span>
-                  </button>
-                )}
-
-                {/* Live Indicator Dot */}
-                {canShowSincro && (
-                  <div 
-                    className={`hidden md:flex items-center space-x-1 px-2.5 py-1 rounded-full text-[10px] font-bold font-mono ${
-                      isConnected 
-                        ? "bg-emerald-950/40 text-emerald-400 border border-emerald-800/50" 
-                        : "bg-amber-950/40 text-amber-400 border border-amber-800/50 animate-pulse"
-                    }`}
-                    title={isConnected ? "Sincronizado en tiempo real" : "Conexión inestable..."}
-                  >
-                    <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? "bg-emerald-500" : "bg-amber-500 animate-ping"}`}></span>
-                    <span>{isConnected ? "SINCRO" : "RECONECTANDO"}</span>
-                  </div>
-                )}
-
-                {/* Probar doble ventana */}
-                {canShowProbarRealTime && (
-                  <button
-                    onClick={openDuplicateTab}
-                    className="hidden md:flex p-2 border border-elegant-border rounded-xl bg-elegant-sub hover:bg-elegant-border text-elegant-text transition-colors active:scale-95 cursor-pointer items-center justify-center"
-                    title="Abrir otra pestaña para probar en tiempo real"
-                  >
-                    <Share2 className="h-4 w-4" />
-                    <span className="hidden lg:inline text-[10px] font-bold ml-1.5 uppercase">Probar Real-time</span>
-                  </button>
-                )}
-              </div>
-            );
-          })()}
-
         </div>
+
+        {/* 📱 MENÚ HAMBURGUESA DESPLEGABLE PARA DISPOSITIVOS MÓVILES */}
+        <AnimatePresence>
+          {mobileMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.22, ease: "easeInOut" }}
+              className="xl:hidden w-full bg-elegant-card/98 border-t border-elegant-border/80 shadow-2xl overflow-hidden backdrop-blur-xl"
+            >
+              <div className="max-w-7xl mx-auto px-4 py-4 space-y-4 text-left max-h-[80vh] overflow-y-auto">
+                
+                {/* 1. Tarjeta de Usuario / Perfil Activo */}
+                <div className="bg-elegant-sub/90 border border-elegant-border rounded-2xl p-3.5 shadow-xs">
+                  {loggedUser ? (
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center space-x-3 min-w-0">
+                        <div className="h-10 w-10 rounded-xl bg-elegant-gold/20 border border-elegant-gold/40 text-elegant-gold flex items-center justify-center font-extrabold text-base shrink-0">
+                          {loggedUser.name ? loggedUser.name.charAt(0).toUpperCase() : "U"}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="font-extrabold text-sm text-white truncate">
+                              {loggedUser.name}
+                            </p>
+                            <span className="text-[9px] uppercase px-2 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                              {loggedUser.role === "admin" ? "Admin" : loggedUser.role === "developer" ? "Dev" : "Barbero"}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-elegant-text-muted truncate mt-0.5">
+                            {loggedUser.email || loggedUser.phone || "Sesión de personal activa"}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {/* Botón Destacado para Cerrar Sesión / Perfil */}
+                      <button
+                        onClick={() => {
+                          handleLogout();
+                          setMobileMenuOpen(false);
+                        }}
+                        className="px-3 py-2 bg-rose-950 hover:bg-rose-900 border border-rose-800 text-rose-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 shrink-0 shadow-xs cursor-pointer"
+                        title="Cerrar Sesión del Perfil"
+                      >
+                        <LogOut className="h-3.5 w-3.5 text-rose-300" />
+                        <span>Cerrar Perfil</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center space-x-2.5">
+                        <div className="h-9 w-9 rounded-xl bg-elegant-gold/10 border border-elegant-gold/30 text-elegant-gold flex items-center justify-center shrink-0">
+                          <Shield className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-xs text-white">Acceso para Personal</p>
+                          <p className="text-[10px] text-elegant-text-muted">Inicia sesión como Barbero o Admin</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setCurrentRole("login");
+                          setMobileMenuOpen(false);
+                        }}
+                        className="px-3.5 py-2 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
+                      >
+                        <Shield className="h-3.5 w-3.5" />
+                        <span>Ingresar</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Sección de Vistas Principales & Perfiles */}
+                <div className="space-y-2">
+                  <p className="text-[10px] font-mono uppercase tracking-wider text-elegant-text-muted font-bold px-1">
+                    Vistas y Perfiles
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {activeTenantId === "bella-barba" && (
+                      <button
+                        onClick={() => {
+                          setCurrentRole("syncbarber");
+                          setMobileMenuOpen(false);
+                        }}
+                        className={`w-full p-3 rounded-xl text-xs font-bold flex items-center justify-between border transition-all cursor-pointer ${
+                          currentRole === "syncbarber"
+                            ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/50 shadow-xs"
+                            : "bg-elegant-sub/60 text-elegant-text border-elegant-border hover:bg-elegant-sub"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <Sparkles className="h-4 w-4 text-cyan-400" />
+                          <span>Conoce SYNCBARBER</span>
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-elegant-text-muted" />
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => {
+                        setCurrentRole("client");
+                        setMobileMenuOpen(false);
+                      }}
+                      className={`w-full p-3 rounded-xl text-xs font-bold flex items-center justify-between border transition-all cursor-pointer ${
+                        currentRole === "client"
+                          ? "bg-elegant-gold/20 text-elegant-gold border-elegant-gold/50 shadow-xs"
+                          : "bg-elegant-sub/60 text-elegant-text border-elegant-border hover:bg-elegant-sub"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <User className="h-4 w-4 text-elegant-gold" />
+                        <span>Vista Cliente (Reservas)</span>
+                      </div>
+                      <ChevronRight className="h-4 w-4 text-elegant-text-muted" />
+                    </button>
+
+                    {loggedUser && (
+                      <button
+                        onClick={() => {
+                          setCurrentRole(loggedUser.role);
+                          setMobileMenuOpen(false);
+                        }}
+                        className={`w-full p-3 rounded-xl text-xs font-bold flex items-center justify-between border transition-all cursor-pointer ${
+                          currentRole === loggedUser.role
+                            ? "bg-elegant-gold/20 text-elegant-gold border-elegant-gold/50 shadow-xs"
+                            : "bg-elegant-sub/60 text-elegant-text border-elegant-border hover:bg-elegant-sub"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <Shield className="h-4 w-4 text-elegant-gold" />
+                          <span>
+                            {loggedUser.role === "admin" ? "Panel Administrador" : `Agenda de ${loggedUser.name.split(" ")[0]}`}
+                          </span>
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-elegant-text-muted" />
+                      </button>
+                    )}
+
+                    {/* Módulos de Administrador en Menú Móvil */}
+                    {loggedUser && (loggedUser.role === "admin" || currentRole === "admin") && (
+                      <div className="pt-2 border-t border-elegant-border/50 space-y-1.5">
+                        <p className="text-[10px] font-mono uppercase tracking-wider text-elegant-text-muted font-bold px-1 flex items-center justify-between">
+                          <span>Módulos de Administrador</span>
+                          <span className="text-elegant-gold font-bold">8 Opciones</span>
+                        </p>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <button
+                            onClick={() => {
+                              setCurrentRole("admin");
+                              setAdminTab("agenda");
+                              setMobileMenuOpen(false);
+                            }}
+                            className={`p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 border transition-all cursor-pointer ${
+                              currentRole === "admin" && adminTab === "agenda"
+                                ? "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                                : "bg-elegant-sub/60 text-elegant-text border-elegant-border hover:bg-elegant-sub"
+                            }`}
+                          >
+                            <CalendarIcon className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                            <span className="truncate">Agenda Diaria</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setCurrentRole("admin");
+                              setAdminTab("calendar");
+                              setMobileMenuOpen(false);
+                            }}
+                            className={`p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 border transition-all cursor-pointer ${
+                              currentRole === "admin" && adminTab === "calendar"
+                                ? "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                                : "bg-elegant-sub/60 text-elegant-text border-elegant-border hover:bg-elegant-sub"
+                            }`}
+                          >
+                            <Sparkles className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                            <span className="truncate">Calendario</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setCurrentRole("admin");
+                              setAdminTab("inventory");
+                              setMobileMenuOpen(false);
+                            }}
+                            className={`p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 border transition-all cursor-pointer ${
+                              currentRole === "admin" && adminTab === "inventory"
+                                ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/50"
+                                : "bg-elegant-sub/60 text-elegant-text border-elegant-border hover:bg-elegant-sub"
+                            }`}
+                          >
+                            <Wine className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
+                            <span className="truncate">Inventario POS</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setCurrentRole("admin");
+                              setAdminTab("commissions");
+                              setMobileMenuOpen(false);
+                            }}
+                            className={`p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 border transition-all cursor-pointer ${
+                              currentRole === "admin" && adminTab === "commissions"
+                                ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/50"
+                                : "bg-elegant-sub/60 text-elegant-text border-elegant-border hover:bg-elegant-sub"
+                            }`}
+                          >
+                            <Coins className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
+                            <span className="truncate">Comisiones</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setCurrentRole("admin");
+                              setAdminTab("barbers");
+                              setMobileMenuOpen(false);
+                            }}
+                            className={`p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 border transition-all cursor-pointer ${
+                              currentRole === "admin" && adminTab === "barbers"
+                                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
+                                : "bg-elegant-sub/60 text-elegant-text border-elegant-border hover:bg-elegant-sub"
+                            }`}
+                          >
+                            <User className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                            <span className="truncate">Barberos</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setCurrentRole("admin");
+                              setAdminTab("clients");
+                              setMobileMenuOpen(false);
+                            }}
+                            className={`p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 border transition-all cursor-pointer ${
+                              currentRole === "admin" && adminTab === "clients"
+                                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
+                                : "bg-elegant-sub/60 text-elegant-text border-elegant-border hover:bg-elegant-sub"
+                            }`}
+                          >
+                            <Users className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                            <span className="truncate">Clientes</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setCurrentRole("admin");
+                              setAdminTab("catalog");
+                              setMobileMenuOpen(false);
+                            }}
+                            className={`p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 border transition-all cursor-pointer ${
+                              currentRole === "admin" && adminTab === "catalog"
+                                ? "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                                : "bg-elegant-sub/60 text-elegant-text border-elegant-border hover:bg-elegant-sub"
+                            }`}
+                          >
+                            <Camera className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                            <span className="truncate">Lookbook</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setCurrentRole("admin");
+                              setAdminTab("settings");
+                              setMobileMenuOpen(false);
+                            }}
+                            className={`p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 border transition-all cursor-pointer ${
+                              currentRole === "admin" && adminTab === "settings"
+                                ? "bg-elegant-gold/20 text-elegant-gold border-elegant-gold/50"
+                                : "bg-elegant-sub/60 text-elegant-text border-elegant-border hover:bg-elegant-sub"
+                            }`}
+                          >
+                            <Settings className="h-3.5 w-3.5 text-elegant-gold shrink-0" />
+                            <span className="truncate">Ajustes</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 3. Herramientas Rápidas & Modales */}
+                {(() => {
+                  const activeLicense = config.licenseType || "premium";
+                  const isStaffUser = loggedUser && (loggedUser.role === "admin" || loggedUser.role === "barber" || loggedUser.role === "developer");
+                  const isStaffView = currentRole === "admin" || currentRole === "barber" || currentRole === "developer";
+                  const isBarberOrStaff = isStaffUser || isStaffView;
+                  const supportsModoSilla = activeLicense === "profesional" || activeLicense === "premium";
+                  const supportsKiosco = activeLicense === "premium";
+                  const supportsCierreCaja = activeLicense === "profesional" || activeLicense === "premium";
+
+                  const canShowModoSilla = isBarberOrStaff && supportsModoSilla;
+                  const canShowKiosco = isBarberOrStaff && supportsKiosco;
+                  const canShowCierreCaja = isBarberOrStaff && supportsCierreCaja;
+
+                  return (
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-mono uppercase tracking-wider text-elegant-text-muted font-bold px-1">
+                        Herramientas Rápidas
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {canShowModoSilla && (
+                          <button
+                            onClick={() => {
+                              setIsModoSillaActive(true);
+                              setMobileMenuOpen(false);
+                            }}
+                            className="w-full p-3 rounded-xl text-xs font-bold flex items-center gap-3 bg-gradient-to-r from-amber-600/20 to-amber-500/10 border border-amber-500/40 text-amber-300 hover:bg-amber-500/20 transition-all text-left cursor-pointer active:scale-95"
+                          >
+                            <Smartphone className="h-5 w-5 text-amber-400 shrink-0" />
+                            <div>
+                              <p className="font-extrabold text-sm">Modo Silla</p>
+                              <p className="text-[10px] text-amber-300/70 font-normal">PWA para barberos en sillón</p>
+                            </div>
+                          </button>
+                        )}
+
+                        {canShowKiosco && (
+                          <button
+                            onClick={() => {
+                              setShowKioscoModal(true);
+                              setMobileMenuOpen(false);
+                            }}
+                            className="w-full p-3 rounded-xl text-xs font-bold flex items-center gap-3 bg-cyan-950/40 border border-cyan-800/60 text-cyan-300 hover:bg-cyan-900/50 transition-all text-left cursor-pointer active:scale-95"
+                          >
+                            <span className="text-lg">📺</span>
+                            <div>
+                              <p className="font-extrabold text-sm">Pantalla Kiosco</p>
+                              <p className="text-[10px] text-cyan-300/70 font-normal">Check-in TV de recepción</p>
+                            </div>
+                          </button>
+                        )}
+
+                        {canShowCierreCaja && (
+                          <button
+                            onClick={() => {
+                              setShowCierreCajaModal(true);
+                              setMobileMenuOpen(false);
+                            }}
+                            className="w-full p-3 rounded-xl text-xs font-bold flex items-center gap-3 bg-emerald-950/40 border border-emerald-800/60 text-emerald-300 hover:bg-emerald-900/50 transition-all text-left cursor-pointer active:scale-95"
+                          >
+                            <span className="text-lg">💰</span>
+                            <div>
+                              <p className="font-extrabold text-sm">Cierre de Caja</p>
+                              <p className="text-[10px] text-emerald-300/70 font-normal">Arqueo y balance del día</p>
+                            </div>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* 4. Footer del Menú Móvil con Estado de Sincronización & Multi-pestaña */}
+                <div className="pt-3 border-t border-elegant-border/60 flex items-center justify-between text-xs text-elegant-text-muted">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${isConnected ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`} />
+                    <span className="font-mono text-[11px] font-bold text-emerald-400">
+                      {isConnected ? "Sincronizado en tiempo real" : "Reconectando..."}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      openDuplicateTab();
+                      setMobileMenuOpen(false);
+                    }}
+                    className="text-[11px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-semibold cursor-pointer"
+                  >
+                    <Share2 className="h-3.5 w-3.5" />
+                    <span>Multi-pestaña</span>
+                  </button>
+                </div>
+
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </header>
 
       {/* 2. Sub-Menú Estructurado con Submódulos para Administradores */}
@@ -1079,79 +1532,77 @@ export default function App() {
 
           return (
             <div className="bg-elegant-card text-elegant-text border-b border-elegant-border shadow-xs">
-              <div className="max-w-7xl mx-auto px-4 md:px-6 py-2.5 space-y-2">
-                {/* Nivel 1: Módulos Principales (Categorías) */}
-                <div className="flex items-center justify-between gap-2 overflow-x-auto scrollbar-none pb-0.5">
-                  <div className="flex items-center space-x-1.5 xs:space-x-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (adminTab !== "agenda" && adminTab !== "calendar") {
-                          setAdminTab("agenda");
-                        }
-                      }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap border ${
-                        activeCategory === "citas"
-                          ? "bg-amber-500/15 border-amber-500/50 text-amber-300 shadow-xs font-extrabold"
-                          : "bg-elegant-sub/60 border-elegant-border text-elegant-text-muted hover:text-white"
-                      }`}
-                    >
-                      <CalendarIcon className="h-3.5 w-3.5 text-amber-400" />
-                      <span>📅 Citas & Agenda</span>
-                    </button>
+              <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-2 space-y-2">
+                {/* Nivel 1: Módulos Principales (Categorías) - Grid 2x2 en móvil para que NINGUNA opción quede oculta */}
+                <div className="grid grid-cols-2 md:flex md:items-center gap-1.5 sm:gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (adminTab !== "agenda" && adminTab !== "calendar") {
+                        setAdminTab("agenda");
+                      }
+                    }}
+                    className={`px-2.5 py-2 sm:px-3 sm:py-1.5 rounded-xl text-xs font-bold flex items-center justify-center sm:justify-start gap-1.5 transition-all cursor-pointer border ${
+                      activeCategory === "citas"
+                        ? "bg-amber-500/15 border-amber-500/50 text-amber-300 shadow-xs font-extrabold"
+                        : "bg-elegant-sub/60 border-elegant-border text-elegant-text-muted hover:text-white"
+                    }`}
+                  >
+                    <CalendarIcon className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                    <span className="truncate">Citas & Agenda</span>
+                  </button>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (adminTab !== "inventory" && adminTab !== "commissions") {
-                          setAdminTab("inventory");
-                        }
-                      }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap border ${
-                        activeCategory === "pos"
-                          ? "bg-cyan-500/15 border-cyan-500/50 text-cyan-300 shadow-xs font-extrabold"
-                          : "bg-elegant-sub/60 border-elegant-border text-elegant-text-muted hover:text-white"
-                      }`}
-                    >
-                      <Wine className="h-3.5 w-3.5 text-cyan-400" />
-                      <span>💰 Ventas & POS</span>
-                    </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (adminTab !== "inventory" && adminTab !== "commissions") {
+                        setAdminTab("inventory");
+                      }
+                    }}
+                    className={`px-2.5 py-2 sm:px-3 sm:py-1.5 rounded-xl text-xs font-bold flex items-center justify-center sm:justify-start gap-1.5 transition-all cursor-pointer border ${
+                      activeCategory === "pos"
+                        ? "bg-cyan-500/15 border-cyan-500/50 text-cyan-300 shadow-xs font-extrabold"
+                        : "bg-elegant-sub/60 border-elegant-border text-elegant-text-muted hover:text-white"
+                    }`}
+                  >
+                    <Wine className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
+                    <span className="truncate">Ventas & POS</span>
+                  </button>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (adminTab !== "barbers" && adminTab !== "clients") {
-                          setAdminTab("barbers");
-                        }
-                      }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap border ${
-                        activeCategory === "equipo"
-                          ? "bg-emerald-500/15 border-emerald-500/50 text-emerald-300 shadow-xs font-extrabold"
-                          : "bg-elegant-sub/60 border-elegant-border text-elegant-text-muted hover:text-white"
-                      }`}
-                    >
-                      <Users className="h-3.5 w-3.5 text-emerald-400" />
-                      <span>👥 Equipo & Clientes</span>
-                    </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (adminTab !== "barbers" && adminTab !== "clients") {
+                        setAdminTab("barbers");
+                      }
+                    }}
+                    className={`px-2.5 py-2 sm:px-3 sm:py-1.5 rounded-xl text-xs font-bold flex items-center justify-center sm:justify-start gap-1.5 transition-all cursor-pointer border ${
+                      activeCategory === "equipo"
+                        ? "bg-emerald-500/15 border-emerald-500/50 text-emerald-300 shadow-xs font-extrabold"
+                        : "bg-elegant-sub/60 border-elegant-border text-elegant-text-muted hover:text-white"
+                    }`}
+                  >
+                    <Users className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                    <span className="truncate">Equipo & Clientes</span>
+                  </button>
 
-                    <button
-                      type="button"
-                      onClick={() => setAdminTab("settings")}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap border ${
-                        activeCategory === "ajustes"
-                          ? "bg-elegant-gold/20 border-elegant-gold/60 text-elegant-gold shadow-xs font-extrabold"
-                          : "bg-elegant-sub/60 border-elegant-border text-elegant-text-muted hover:text-white"
-                      }`}
-                    >
-                      <Settings className="h-3.5 w-3.5 text-elegant-gold" />
-                      <span>⚙️ Configuración</span>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAdminTab("settings")}
+                    className={`px-2.5 py-2 sm:px-3 sm:py-1.5 rounded-xl text-xs font-bold flex items-center justify-center sm:justify-start gap-1.5 transition-all cursor-pointer border ${
+                      activeCategory === "ajustes"
+                        ? "bg-elegant-gold/20 border-elegant-gold/60 text-elegant-gold shadow-xs font-extrabold"
+                        : "bg-elegant-sub/60 border-elegant-border text-elegant-text-muted hover:text-white"
+                    }`}
+                  >
+                    <Settings className="h-3.5 w-3.5 text-elegant-gold shrink-0" />
+                    <span className="truncate">Configuración</span>
+                  </button>
                 </div>
 
                 {/* Nivel 2: Submódulos Específicos del Módulo Activo */}
-                <div className="flex items-center space-x-2 pt-1 border-t border-elegant-border/40 overflow-x-auto scrollbar-none text-xs">
-                  <span className="text-[10px] font-extrabold text-elegant-text-muted uppercase tracking-wider shrink-0 mr-1 font-mono">
+                <div className="flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-elegant-border/40 text-xs">
+                  <span className="text-[9.5px] font-extrabold text-elegant-text-muted uppercase tracking-wider shrink-0 mr-1 font-mono">
                     Submódulos:
                   </span>
 
@@ -1160,27 +1611,27 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => setAdminTab("agenda")}
-                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold ${
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold whitespace-nowrap ${
                           adminTab === "agenda"
                             ? "bg-amber-500 text-black shadow-xs font-extrabold"
                             : "bg-elegant-sub/80 text-elegant-text-muted hover:text-white"
                         }`}
                       >
-                        <CalendarIcon className="h-3.5 w-3.5" />
-                        <span>Control de Agenda Diaria</span>
+                        <CalendarIcon className="h-3.5 w-3.5 shrink-0" />
+                        <span>Agenda Diaria</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => setAdminTab("calendar")}
-                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold ${
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold whitespace-nowrap ${
                           adminTab === "calendar"
                             ? "bg-amber-500 text-black shadow-xs font-extrabold"
                             : "bg-elegant-sub/80 text-elegant-text-muted hover:text-white"
                         }`}
                       >
-                        <Sparkles className="h-3.5 w-3.5" />
-                        <span>Calendario Interactivo</span>
+                        <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                        <span>Calendario</span>
                         {isCalendarLocked && (
                           <span className="text-[8px] bg-rose-950/80 text-rose-300 border border-rose-800 px-1.5 py-0.2 rounded-md font-extrabold">
                             🔒 PRO
@@ -1195,14 +1646,14 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => setAdminTab("inventory")}
-                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold ${
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold whitespace-nowrap ${
                           adminTab === "inventory"
                             ? "bg-cyan-500 text-black shadow-xs font-extrabold"
                             : "bg-elegant-sub/80 text-elegant-text-muted hover:text-white"
                         }`}
                       >
-                        <Wine className="h-3.5 w-3.5" />
-                        <span>Inventario & Nevera POS</span>
+                        <Wine className="h-3.5 w-3.5 shrink-0" />
+                        <span>Inventario POS</span>
                         {isInventoryLocked && (
                           <span className="text-[8px] bg-rose-950/80 text-rose-300 border border-rose-800 px-1.5 py-0.2 rounded-md font-extrabold">
                             🔒 PRO
@@ -1213,13 +1664,13 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => setAdminTab("commissions")}
-                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold ${
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold whitespace-nowrap ${
                           adminTab === "commissions"
                             ? "bg-cyan-500 text-black shadow-xs font-extrabold"
                             : "bg-elegant-sub/80 text-elegant-text-muted hover:text-white"
                         }`}
                       >
-                        <Coins className="h-3.5 w-3.5" />
+                        <Coins className="h-3.5 w-3.5 shrink-0" />
                         <span>Comisiones & Propinas</span>
                         {isCommissionsLocked && (
                           <span className="text-[8px] bg-rose-950/80 text-rose-300 border border-rose-800 px-1.5 py-0.2 rounded-md font-extrabold">
@@ -1235,26 +1686,26 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => setAdminTab("barbers")}
-                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold ${
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold whitespace-nowrap ${
                           adminTab === "barbers"
                             ? "bg-emerald-500 text-black shadow-xs font-extrabold"
                             : "bg-elegant-sub/80 text-elegant-text-muted hover:text-white"
                         }`}
                       >
-                        <User className="h-3.5 w-3.5" />
-                        <span>Administrar Barberos</span>
+                        <User className="h-3.5 w-3.5 shrink-0" />
+                        <span>Barberos</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => setAdminTab("clients")}
-                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold ${
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold whitespace-nowrap ${
                           adminTab === "clients"
                             ? "bg-emerald-500 text-black shadow-xs font-extrabold"
                             : "bg-elegant-sub/80 text-elegant-text-muted hover:text-white"
                         }`}
                       >
-                        <Users className="h-3.5 w-3.5" />
+                        <Users className="h-3.5 w-3.5 shrink-0" />
                         <span>Clientes & Membresías</span>
                         {isClientsLocked && (
                           <span className="text-[8px] bg-rose-950/80 text-rose-300 border border-rose-800 px-1.5 py-0.2 rounded-md font-extrabold">
@@ -1270,27 +1721,27 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => setAdminTab("catalog")}
-                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold ${
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold whitespace-nowrap ${
                           adminTab === "catalog"
                             ? "bg-amber-400 text-black shadow-xs font-extrabold"
                             : "bg-elegant-sub/80 text-elegant-text-muted hover:text-white"
                         }`}
                       >
-                        <Camera className="h-3.5 w-3.5 text-amber-500" />
-                        <span>Catálogo de Cortes & Lookbook</span>
+                        <Camera className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                        <span>Lookbook</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => setAdminTab("settings")}
-                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold ${
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:py-1 rounded-lg transition-all cursor-pointer shrink-0 font-bold whitespace-nowrap ${
                           adminTab === "settings"
                             ? "bg-elegant-gold text-black shadow-xs font-extrabold"
                             : "bg-elegant-sub/80 text-elegant-text-muted hover:text-white"
                         }`}
                       >
-                        <Settings className="h-3.5 w-3.5" />
-                        <span>Configuración del Salón</span>
+                        <Settings className="h-3.5 w-3.5 shrink-0" />
+                        <span>Ajustes Generales</span>
                       </button>
                     </>
                   )}
@@ -1645,6 +2096,9 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Banner flotante de Alarma Continua Activa */}
+      <ActiveAlarmBanner />
 
       {/* 5. Contenedor de Toasts Real-Time Flotantes */}
       <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full px-4 sm:px-0 pointer-events-none">

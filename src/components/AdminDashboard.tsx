@@ -166,9 +166,28 @@ export default function AdminDashboard({
     }
   };
 
-  // Global Announcements State
+  // Global Announcements State with localStorage persistence
   const [localAnnouncements, setLocalAnnouncements] = useState<any[]>([]);
-  const [dismissedAnnouncements, setDismissedAnnouncements] = useState<string[]>([]);
+  const [dismissedAnnouncements, setDismissedAnnouncements] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("syncbarber_dismissed_announcements");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const handleDismissAnnouncement = (id: string) => {
+    setDismissedAnnouncements((prev) => {
+      const updated = prev.includes(id) ? prev : [...prev, id];
+      try {
+        localStorage.setItem("syncbarber_dismissed_announcements", JSON.stringify(updated));
+      } catch (err) {
+        console.error(err);
+      }
+      return updated;
+    });
+  };
 
   useEffect(() => {
     const fetchAnnouncements = async () => {
@@ -439,164 +458,98 @@ export default function AdminDashboard({
 
   return (
     <div className="space-y-6" id="admin-dashboard">
-      {/* Global Broadcast Announcements for Admin & Barbers */}
-      {visibleAnnouncements.length > 0 && (
-        <div className="space-y-3" id="global-announcements-banner">
-          {visibleAnnouncements.map((ann) => (
-            <div
-              key={ann.id}
-              className={`p-4 md:p-5 rounded-2xl border shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-left transition-all ${
-                ann.type === "alert"
-                  ? "bg-rose-950/90 border-rose-600/70 text-rose-100 shadow-rose-950/30"
-                  : ann.type === "warning"
-                  ? "bg-amber-950/90 border-amber-600/70 text-amber-100 shadow-amber-950/30"
-                  : ann.type === "success"
-                  ? "bg-emerald-950/90 border-emerald-600/70 text-emerald-100 shadow-emerald-950/30"
-                  : "bg-sky-950/90 border-sky-600/70 text-sky-100 shadow-sky-950/30"
-              }`}
-            >
-              <div className="flex items-start gap-3.5">
-                <div className="p-3 bg-white/10 rounded-2xl shrink-0 mt-0.5 border border-white/10">
-                  <Megaphone className="h-6 w-6 text-amber-400 animate-bounce" />
-                </div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-white/15 tracking-wider border border-white/20">
-                      {ann.type === "alert" ? "🚨 Alerta Urgente" : ann.type === "warning" ? "⚠️ Advertencia" : ann.type === "success" ? "🎉 Novedad Plataforma" : "📢 Comunicado Oficial"}
-                    </span>
-                    <span className="text-[10px] opacity-75 font-mono">
-                      {new Date(ann.createdAt || Date.now()).toLocaleDateString("es-ES", { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                  <h4 className="text-sm md:text-base font-extrabold text-white tracking-tight">{ann.title}</h4>
-                  <p className="text-xs md:text-sm opacity-90 leading-relaxed font-normal">{ann.message}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setDismissedAnnouncements(prev => [...prev, ann.id])}
-                className="self-end sm:self-center px-4 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl border border-white/20 transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
-                title="Descartar anuncio"
-              >
-                <X className="h-4 w-4" />
-                <span>Entendido</span>
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Banner de Notificaciones Push & WhatsApp */}
-      <PushNotificationBanner 
-        config={config} 
-        barber={barbers?.find(b => b.id === loggedBarberId)}
-        onUpdateWhatsAppPhone={async (phone) => {
-          if (loggedBarberId && onUpdateBarber) {
-            await onUpdateBarber(loggedBarberId, { whatsapp: phone, phone });
-          } else if (onUpdateConfig) {
-            await onUpdateConfig({ whatsapp: phone, phone });
-          }
-        }}
-      />
-
-      {/* Real-time Status Alert */}
-      <div className="bg-emerald-950/40 border border-emerald-800/50 text-emerald-300 rounded-xl p-3 flex items-center justify-between shadow-xs">
-        <div className="flex items-center space-x-2">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-          </span>
-          <p className="text-xs font-medium">Panel de Peluquero conectado en tiempo real.</p>
-        </div>
-        <div className="text-xs bg-emerald-900/40 border border-emerald-800/30 px-2 py-0.5 rounded-md font-mono font-semibold text-emerald-300">
-          SSE Conectado
-        </div>
-      </div>
-
       {/* Selector Navegación de Submódulos Administrativos */}
-      <div className="bg-elegant-card border border-elegant-border rounded-2xl p-2.5 shadow-md" id="admin-submodules-bar">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center space-x-1.5 overflow-x-auto scrollbar-none max-w-full py-0.5">
+      <div className="bg-elegant-card border border-elegant-border rounded-2xl p-2.5 sm:p-3 shadow-md" id="admin-submodules-bar">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2 py-0.5">
             <button
               type="button"
               onClick={() => setActiveSubmodule("agenda")}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
                 activeSubmodule === "agenda"
                   ? "bg-amber-500 text-black shadow-md font-extrabold"
                   : "bg-elegant-sub text-elegant-text-muted hover:text-white hover:bg-elegant-border"
               }`}
             >
-              <Scissors className="h-4 w-4" />
+              <Scissors className="h-4 w-4 shrink-0" />
               <span>Agenda Diaria</span>
-              <span className="ml-1 text-[10px] bg-black/20 px-2 py-0.5 rounded-full font-mono font-bold">
+              <span className="ml-1 text-[10px] bg-black/20 px-1.5 py-0.5 rounded-full font-mono font-bold">
                 {selectedDateTotalActive}
               </span>
             </button>
 
-            {!isBarberView && (
-              <button
-                type="button"
-                onClick={() => setActiveSubmodule("caja")}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-                  activeSubmodule === "caja"
-                    ? "bg-emerald-500 text-black shadow-md font-extrabold"
-                    : "bg-elegant-sub text-elegant-text-muted hover:text-white hover:bg-elegant-border"
-                }`}
-              >
-                <DollarSign className="h-4 w-4" />
-                <span>Caja & Balance</span>
-                <span className="ml-1 text-[10px] bg-black/20 px-2 py-0.5 rounded-full font-mono font-bold">
-                  {formatPrice(totalCajaCompleted)}
-                </span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setActiveSubmodule("caja")}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                activeSubmodule === "caja"
+                  ? "bg-emerald-500 text-black shadow-md font-extrabold"
+                  : "bg-elegant-sub text-elegant-text-muted hover:text-white hover:bg-elegant-border"
+              }`}
+            >
+              <DollarSign className="h-4 w-4 shrink-0" />
+              <span>Caja & Balance</span>
+              <span className="ml-1 text-[10px] bg-black/20 px-1.5 py-0.5 rounded-full font-mono font-bold">
+                {formatPrice(totalCajaCompleted)}
+              </span>
+            </button>
 
-            {!isBarberView && (
-              <button
-                type="button"
-                onClick={() => setActiveSubmodule("multas")}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-                  activeSubmodule === "multas"
-                    ? "bg-rose-600 text-white shadow-md font-extrabold"
-                    : "bg-elegant-sub text-elegant-text-muted hover:text-white hover:bg-elegant-border"
-                }`}
-              >
-                <AlertTriangle className="h-4 w-4 text-rose-300" />
-                <span>Multas & Sanciones</span>
-                {(clients || []).filter(c => (c.pendingPenalty || 0) > 0).length > 0 && (
-                  <span className="ml-1 text-[10px] bg-rose-950 text-rose-200 border border-rose-700/60 px-2 py-0.5 rounded-full font-mono font-bold">
-                    {(clients || []).filter(c => (c.pendingPenalty || 0) > 0).length}
-                  </span>
-                )}
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setActiveSubmodule("multas")}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                activeSubmodule === "multas"
+                  ? "bg-rose-600 text-white shadow-md font-extrabold"
+                  : "bg-elegant-sub text-elegant-text-muted hover:text-white hover:bg-elegant-border"
+              }`}
+            >
+              <AlertTriangle className="h-4 w-4 text-rose-300 shrink-0" />
+              <span>Multas</span>
+              {(clients || []).filter(c => (c.pendingPenalty || 0) > 0).length > 0 && (
+                <span className="ml-1 text-[10px] bg-rose-950 text-rose-200 border border-rose-700/60 px-1.5 py-0.5 rounded-full font-mono font-bold">
+                  {(clients || []).filter(c => (c.pendingPenalty || 0) > 0).length}
+                </span>
+              )}
+            </button>
 
             <button
               type="button"
               onClick={() => setActiveSubmodule("bloqueos")}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
                 activeSubmodule === "bloqueos"
                   ? "bg-cyan-600 text-white shadow-md font-extrabold"
                   : "bg-elegant-sub text-elegant-text-muted hover:text-white hover:bg-elegant-border"
               }`}
             >
-              <CalendarIcon className="h-4 w-4 text-cyan-200" />
-              <span>Bloqueo & Horarios</span>
+              <CalendarIcon className="h-4 w-4 text-cyan-200 shrink-0" />
+              <span>Bloqueos</span>
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setActiveSubmodule(activeSubmodule === "all" ? "agenda" : "all")}
-            className={`px-3 py-1.5 rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 border ${
-              activeSubmodule === "all"
-                ? "bg-elegant-gold text-black border-elegant-gold font-extrabold"
-                : "bg-elegant-sub text-elegant-text-muted border-elegant-border hover:text-white"
-            }`}
-            title="Alternar entre submódulo enfocado o vista completa"
-          >
-            <FileText className="h-3.5 w-3.5" />
-            <span>{activeSubmodule === "all" ? "Vista Enfocada" : "Vista Completa"}</span>
-          </button>
+          <div className="flex items-center justify-end gap-2.5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-elegant-border/40">
+            {/* Real-time SSE Status Pill */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-950/50 border border-emerald-800/50 rounded-xl text-xs font-mono text-emerald-300" title="Panel conectado en tiempo real">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span>SSE En Vivo</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setActiveSubmodule(activeSubmodule === "all" ? "agenda" : "all")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 border ${
+                activeSubmodule === "all"
+                  ? "bg-elegant-gold text-black border-elegant-gold font-extrabold"
+                  : "bg-elegant-sub text-elegant-text-muted border-elegant-border hover:text-white"
+              }`}
+              title="Alternar entre submódulo enfocado o vista completa"
+            >
+              <FileText className="h-3.5 w-3.5" />
+              <span>{activeSubmodule === "all" ? "Enfocada" : "Completa"}</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -838,7 +791,7 @@ export default function AdminDashboard({
       )}
 
       {/* Grid de Métricas Generales */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-3.5 items-stretch">
         {/* Total ingresos */}
         <div className="bg-elegant-card border border-elegant-border p-3.5 rounded-2xl flex flex-col justify-between shadow-xs" id="metric-income">
           <div className="flex items-center justify-between text-elegant-text-muted">
@@ -954,42 +907,39 @@ export default function AdminDashboard({
 
           const noShowsCount = Math.max(apptInasistencias, clientPenaltyRecordsCount);
 
-          const displayAmount = pendingPenaltiesTotal > 0 ? pendingPenaltiesTotal : collectedPenaltiesTotal;
-          const displayLabel = pendingPenaltiesTotal > 0 
-            ? "Pendientes por cobro" 
-            : (collectedPenaltiesTotal > 0 ? "Multas Recaudadas" : "Pendientes por cobro");
-
           return (
-            <div className="bg-gradient-to-br from-rose-950/50 to-elegant-card border border-rose-800/60 p-3.5 rounded-2xl flex flex-col justify-between shadow-xs col-span-2 md:col-span-1" id="metric-penalties">
+            <div className="bg-gradient-to-br from-rose-950/50 to-elegant-card border border-rose-800/60 p-3.5 rounded-2xl flex flex-col justify-between shadow-xs col-span-2 sm:col-span-2 lg:col-span-1" id="metric-penalties">
               <div className="flex items-center justify-between text-rose-300">
                 <span className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 font-mono">
                   🚨 Multas & Señas
                 </span>
-                <div className={`p-1 rounded font-mono text-[9px] font-bold ${
+                <div className={`px-2 py-0.5 rounded-lg font-mono text-[9px] font-bold ${
                   clientsWithPenaltiesCount > 0 ? "bg-rose-900/80 text-rose-200 border border-rose-700" : "bg-emerald-950/80 text-emerald-300 border border-emerald-800"
                 }`}>
                   {clientsWithPenaltiesCount} Cli.
                 </div>
               </div>
-              <div className="mt-2 space-y-0.5">
+              <div className="mt-2 space-y-1">
                 <span className={`text-lg md:text-xl font-black font-mono block ${pendingPenaltiesTotal > 0 ? "text-rose-400" : "text-emerald-400"}`}>
                   ${pendingPenaltiesTotal.toLocaleString()} COP
                 </span>
-                <div className="text-[9px] text-rose-300/80 flex justify-between font-mono">
-                  <span>{pendingPenaltiesTotal > 0 ? "Pendientes por cobro" : "Sin multas pendientes"}</span>
-                  <span>Clientes multados: <strong>{clientsWithPenaltiesCount}</strong></span>
+                <div className="text-[10px] text-rose-300/80 flex flex-wrap items-center justify-between gap-1 font-mono pt-0.5">
+                  <span>{pendingPenaltiesTotal > 0 ? "Pendientes:" : "Sin multas"}</span>
+                  <span className="text-rose-200 font-bold bg-rose-950/80 px-1.5 py-0.5 rounded border border-rose-800/50">
+                    {clientsWithPenaltiesCount} {clientsWithPenaltiesCount === 1 ? "cliente" : "clientes"}
+                  </span>
                 </div>
                 {collectedPenaltiesTotal > 0 && (
-                  <div className="text-[8px] text-emerald-400/90 font-mono text-right pt-0.5 border-t border-rose-900/40">
+                  <div className="text-[9px] text-emerald-400/90 font-mono text-right pt-0.5 border-t border-rose-900/40">
                     Histórico Recaudado: ${collectedPenaltiesTotal.toLocaleString()} COP
                   </div>
                 )}
                 <button
                   onClick={() => setShowPenaltiesModal(true)}
-                  className="mt-2 w-full py-1.5 px-2 bg-rose-900/80 hover:bg-rose-800 text-rose-100 font-extrabold text-[10px] rounded-xl transition-all border border-rose-600/70 flex items-center justify-center gap-1 cursor-pointer shadow-xs active:scale-95"
+                  className="mt-2 w-full py-2 px-2.5 bg-rose-900/80 hover:bg-rose-800 text-rose-100 font-extrabold text-xs rounded-xl transition-all border border-rose-600/70 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
                   title="Abrir panel para exonerar o gestionar multas por inasistencia"
                 >
-                  <Sparkles className="h-3 w-3 text-rose-300" />
+                  <Sparkles className="h-3.5 w-3.5 text-rose-300 shrink-0" />
                   <span>Exonerar / Gestionar Multas</span>
                 </button>
               </div>
@@ -998,8 +948,8 @@ export default function AdminDashboard({
         })()}
       </div>
 
-      {/* Módulo de Caja Diaria (Only for Admin) */}
-      {!isBarberView && (activeSubmodule === "caja" || activeSubmodule === "all") && (
+      {/* Módulo de Caja Diaria */}
+      {(activeSubmodule === "caja" || activeSubmodule === "all") && (
         <div className="bg-elegant-card border border-elegant-border rounded-3xl p-5 shadow-xs space-y-4 text-left">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-elegant-border/60 pb-3">
             <div>
@@ -1089,7 +1039,7 @@ export default function AdminDashboard({
       )}
 
       {/* MÓDULO EXCLUSIVO DE MULTAS & SANCIONES POR INASISTENCIA */}
-      {!isBarberView && (activeSubmodule === "multas" || activeSubmodule === "all") && (
+      {(activeSubmodule === "multas" || activeSubmodule === "all") && (
         <div className="bg-elegant-card border border-rose-900/60 rounded-3xl p-5 shadow-xs space-y-4 text-left animate-fadeIn">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-rose-900/40 pb-3">
             <div className="flex items-center space-x-3">
@@ -1235,7 +1185,7 @@ export default function AdminDashboard({
       {/* Control de Agenda Diaria */}
       {(activeSubmodule === "agenda" || activeSubmodule === "all") && (
         <div className="bg-elegant-card border border-elegant-border rounded-3xl p-4 md:p-6 shadow-xs space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="space-y-1">
             <h2 className="text-lg font-bold text-white font-sans flex items-center gap-2">
               <Scissors className="h-5 w-5 text-elegant-gold" />
@@ -1244,24 +1194,26 @@ export default function AdminDashboard({
             <p className="text-xs text-elegant-text-muted">Gestiona las reservas hechas para el día seleccionado.</p>
           </div>
 
-          <div className="flex items-center space-x-2">
-            <button 
-              onClick={() => adjustDate(-1)}
-              className="p-2 border border-elegant-border bg-elegant-sub rounded-xl hover:bg-elegant-card active:scale-95 transition-all text-elegant-text cursor-pointer"
-              title="Día Anterior"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <span className="px-4 py-2 bg-elegant-sub border border-elegant-border text-white font-semibold rounded-xl text-xs font-mono select-none">
-              {getDayLabel(selectedDate)}
-            </span>
-            <button 
-              onClick={() => adjustDate(1)}
-              className="p-2 border border-elegant-border bg-elegant-sub rounded-xl hover:bg-elegant-card active:scale-95 transition-all text-elegant-text cursor-pointer"
-              title="Día Siguiente"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center space-x-1.5">
+              <button 
+                onClick={() => adjustDate(-1)}
+                className="p-2 border border-elegant-border bg-elegant-sub rounded-xl hover:bg-elegant-card active:scale-95 transition-all text-elegant-text cursor-pointer"
+                title="Día Anterior"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="px-3.5 py-2 bg-elegant-sub border border-elegant-border text-white font-semibold rounded-xl text-xs font-mono select-none">
+                {getDayLabel(selectedDate)}
+              </span>
+              <button 
+                onClick={() => adjustDate(1)}
+                className="p-2 border border-elegant-border bg-elegant-sub rounded-xl hover:bg-elegant-card active:scale-95 transition-all text-elegant-text cursor-pointer"
+                title="Día Siguiente"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
 
             {onOpenModoSilla && (
               <button
@@ -1278,10 +1230,10 @@ export default function AdminDashboard({
                 setWalkInDate(selectedDate);
                 setShowWalkInForm(!showWalkInForm);
               }}
-              className="px-3 py-2 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-colors ml-1 cursor-pointer"
+              className="px-3.5 py-2 bg-elegant-gold hover:bg-elegant-gold-hover text-elegant-bg rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <Plus className="h-3.5 w-3.5" />
-              Cita Manual
+              <span>Cita Manual</span>
             </button>
           </div>
         </div>

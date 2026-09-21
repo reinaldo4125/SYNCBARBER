@@ -280,11 +280,6 @@ export default function BarberManager({
             Crea cuentas de acceso de barberos, edita especialidades y controla su estado de actividad.
           </p>
         </div>
-
-        {/* Push & WhatsApp Notification Settings Banner */}
-        <div className="w-full">
-          <PushNotificationBanner config={config} />
-        </div>
         
         {!showAddForm && !editingBarber && (
           <div className="flex items-center gap-2">
