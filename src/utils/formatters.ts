@@ -8,6 +8,20 @@
  *   "14:00" -> "2:00 PM"
  *   "20:15" -> "8:15 PM"
  */
+/**
+ * Obtiene la fecha en formato YYYY-MM-DD usando la hora LOCAL del dispositivo.
+ * Evita el problema común de toISOString().split("T")[0] que al operar en UTC
+ * salta prematuramente al día siguiente durante la tarde/noche en husos horarios de América.
+ */
+export function getLocalDateString(dateInput: Date | string | number = new Date()): string {
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  if (isNaN(d.getTime())) return "";
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function formatTime(timeStr: string | undefined | null, timeFormat: '12h' | '24h' = '12h'): string {
   if (!timeStr) return "";
   const str = String(timeStr).trim();

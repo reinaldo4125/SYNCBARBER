@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { ClientAccount, TechnicalPreferences, HaircutPhoto } from "../types";
+import { getLocalDateString } from "../utils/formatters";
 import { 
   Scissors, 
   Camera, 
@@ -174,7 +175,7 @@ export default function ClientVisualCard({
     const newPhoto: HaircutPhoto = {
       id: "photo_" + Date.now(),
       url: finalUrl,
-      date: new Date().toISOString().substring(0, 10),
+      date: getLocalDateString(),
       styleTag: newPhotoTag,
       barberName: newPhotoBarber,
       notes: newPhotoNotes,

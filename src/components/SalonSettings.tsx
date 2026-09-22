@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Service, SalonConfig } from "../types";
+import { formatTime } from "../utils/formatters";
 import { 
   Settings, 
   Trash, 
@@ -449,27 +450,42 @@ export default function SalonSettings({
             </div>
 
             {/* Horarios de Atención */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Hora Apertura</label>
-                <input
-                  type="time"
-                  required
-                  value={openTime}
-                  onChange={(e) => setOpenTime(e.target.value)}
-                  className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-sm md:text-xs bg-elegant-sub text-white focus:ring-1 focus:ring-elegant-gold"
-                />
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Hora Apertura</label>
+                    <span className="text-[10px] font-mono text-elegant-gold font-bold">
+                      {formatTime(openTime, '12h')}
+                    </span>
+                  </div>
+                  <input
+                    type="time"
+                    required
+                    value={openTime}
+                    onChange={(e) => setOpenTime(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-sm md:text-xs bg-elegant-sub text-white focus:ring-1 focus:ring-elegant-gold"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Hora Cierre</label>
+                    <span className="text-[10px] font-mono text-amber-400 font-bold">
+                      {formatTime(closeTime, '12h')}
+                    </span>
+                  </div>
+                  <input
+                    type="time"
+                    required
+                    value={closeTime}
+                    onChange={(e) => setCloseTime(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-sm md:text-xs bg-elegant-sub text-white focus:ring-1 focus:ring-elegant-gold"
+                  />
+                </div>
               </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Hora Cierre</label>
-                <input
-                  type="time"
-                  required
-                  value={closeTime}
-                  onChange={(e) => setCloseTime(e.target.value)}
-                  className="w-full px-3 py-2.5 border border-elegant-border rounded-xl text-sm md:text-xs bg-elegant-sub text-white focus:ring-1 focus:ring-elegant-gold"
-                />
-              </div>
+              <p className="text-[9px] text-elegant-text-muted leading-tight">
+                💡 <strong className="text-white">Tip:</strong> Para que el último turno inicie a las 9:30 PM y finalice a las 10:00 PM, configura <strong>22:00</strong>. Si deseas que se puedan agendar citas que comiencen exactamente a las 10:00 PM (10:00 PM a 10:30 PM), configura el cierre en <strong>22:30</strong>.
+              </p>
             </div>
 
             {/* Intervalo entre Turnos */}

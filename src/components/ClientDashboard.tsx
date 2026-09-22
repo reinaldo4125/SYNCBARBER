@@ -3,7 +3,7 @@ import { Appointment, Service, SalonConfig, AppointmentStatus, Barber, Membershi
 import PWAInstallBanner, { PWABookingSuccessPrompt } from "./PWAInstallBanner";
 import ClientStyleLookbookModal from "./ClientStyleLookbookModal";
 import { showPushNotification, getWhatsAppNotificationUrl } from "../utils/pushNotifications";
-import { formatTime } from "../utils/formatters";
+import { formatTime, getLocalDateString } from "../utils/formatters";
 import { createGoogleCalendarUrl, downloadIcsFile } from "../utils/calendarHelpers";
 import { 
   Scissors, 
@@ -356,7 +356,7 @@ export default function ClientDashboard({
 
       // Express server working days
       if (activeWorkingDays.includes(dayOfWeek)) {
-        dates.push(targetDate.toISOString().split("T")[0]);
+        dates.push(getLocalDateString(targetDate));
       }
 
       if (dates.length === 7) break;
@@ -377,11 +377,11 @@ export default function ClientDashboard({
   const getTimeSlots = () => {
     const slots: string[] = [];
     const [openH, openM] = (config.openTime || "08:00").split(":").map(Number);
-    const [closeH, closeM] = (config.closeTime || "20:00").split(":").map(Number);
+    const [closeH, closeM] = (config.closeTime || "22:00").split(":").map(Number);
 
     const safeOpenH = isNaN(openH) ? 8 : openH;
     const safeOpenM = isNaN(openM) ? 0 : openM;
-    const safeCloseH = isNaN(closeH) ? 20 : closeH;
+    const safeCloseH = isNaN(closeH) ? 22 : closeH;
     const safeCloseM = isNaN(closeM) ? 0 : closeM;
     const step = config.intervalMinutes && config.intervalMinutes >= 10 ? config.intervalMinutes : 30;
 
@@ -972,7 +972,7 @@ export default function ClientDashboard({
         <div className="bg-elegant-sub/80 border border-elegant-border p-3 sm:p-4 rounded-xl sm:rounded-2xl space-y-1 relative z-10 text-xs shrink-0 w-full md:w-auto">
           <p className="font-bold text-elegant-gold uppercase tracking-wider text-[10px]">Horario de Atención</p>
           <p className="font-medium text-white">{formatWorkingDays(config.workingDays)}</p>
-          <p className="font-mono text-elegant-text-muted">{config.openTime || "08:00"} - {config.closeTime || "20:00"}</p>
+          <p className="font-mono text-elegant-text-muted">{formatTime(config.openTime || "09:00", config?.timeFormat)} - {formatTime(config.closeTime || "22:00", config?.timeFormat)}</p>
         </div>
       </div>
 
@@ -1377,7 +1377,7 @@ export default function ClientDashboard({
                   {(() => {
                     const earliest = timeSlots.find(slot => !isSlotBusy(selectedDate, slot));
                     if (!earliest) return null;
-                    const isToday = selectedDate === new Date().toISOString().split("T")[0];
+                    const isToday = selectedDate === getLocalDateString();
                     return (
                       <div className="bg-gradient-to-r from-amber-950/40 via-neutral-900 to-amber-950/40 border border-amber-500/40 rounded-2xl p-3 sm:p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
                         <div className="flex items-center gap-3">

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Appointment, Barber, InventoryItem, ProductSale, BarberAdvance, BarberPayrollSettlement } from "../types";
+import { getLocalDateString } from "../utils/formatters";
 import { 
   Scissors, 
   Coins, 
@@ -80,16 +81,18 @@ export default function CommissionsManager({
 
   // Filter completed appointments based on chosen preset
   const getFilteredAppointments = () => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = getLocalDateString();
     
     // Calculate start of current week (last Monday)
     const currentDay = new Date();
     const dayOfWeek = currentDay.getDay(); // 0 is Sunday, 1 is Monday, etc.
     const diffToMonday = currentDay.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-    const startOfWeek = new Date(new Date(currentDay).setDate(diffToMonday)).toISOString().split("T")[0];
+    const mondayDate = new Date(currentDay);
+    mondayDate.setDate(diffToMonday);
+    const startOfWeek = getLocalDateString(mondayDate);
 
     // Calculate start of current month
-    const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split("T")[0];
+    const startOfMonth = getLocalDateString(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
 
     return appointments.filter(app => {
       if (app.status !== "completed") return false;
@@ -109,12 +112,14 @@ export default function CommissionsManager({
   };
 
   const getFilteredSales = () => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = getLocalDateString();
     const currentDay = new Date();
     const dayOfWeek = currentDay.getDay();
     const diffToMonday = currentDay.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-    const startOfWeek = new Date(new Date(currentDay).setDate(diffToMonday)).toISOString().split("T")[0];
-    const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split("T")[0];
+    const mondayDate = new Date(currentDay);
+    mondayDate.setDate(diffToMonday);
+    const startOfWeek = getLocalDateString(mondayDate);
+    const startOfMonth = getLocalDateString(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
 
     return sales.filter(s => {
       const saleDate = (s.createdAt || "").split("T")[0];
@@ -246,7 +251,7 @@ export default function CommissionsManager({
     try {
       const newAdv: BarberAdvance = {
         id: "adv_" + Date.now().toString(),
-        date: new Date().toISOString().split("T")[0],
+        date: getLocalDateString(),
         amount: Number(advanceAmount),
         reason: advanceReason.trim() || "Adelanto de nómina / Vale",
         createdAt: new Date().toISOString()
@@ -276,8 +281,8 @@ export default function CommissionsManager({
       id: "liq_" + Date.now().toString(),
       barberId: barber.id,
       barberName: barber.name,
-      startDate: datePreset === "today" ? new Date().toISOString().split("T")[0] : labelsPreset(datePreset),
-      endDate: new Date().toISOString().split("T")[0],
+      startDate: datePreset === "today" ? getLocalDateString() : labelsPreset(datePreset),
+      endDate: getLocalDateString(),
       cutsCount: stats.appointmentCount,
       cutsRevenue: stats.cutsRevenue,
       cutsCommission: stats.cutsCommission,

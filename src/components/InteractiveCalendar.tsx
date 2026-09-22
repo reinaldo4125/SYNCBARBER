@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Appointment, Barber, Service, SalonConfig, ClientAccount } from "../types";
-import { formatTime } from "../utils/formatters";
+import { formatTime, getLocalDateString } from "../utils/formatters";
 import { 
   Calendar as CalendarIcon, 
   ChevronLeft, 
@@ -46,7 +46,7 @@ export default function InteractiveCalendar({
   
   // Selected date anchor
   const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split("T")[0]
+    getLocalDateString()
   );
   
   // Barber filter for week/month views
@@ -99,10 +99,10 @@ export default function InteractiveCalendar({
   // Generate hourly slots based on openTime, closeTime, and interval
   const timeSlots: string[] = [];
   const [openH, openM] = (config.openTime || "08:00").split(":").map(Number);
-  const [closeH, closeM] = (config.closeTime || "20:00").split(":").map(Number);
+  const [closeH, closeM] = (config.closeTime || "22:00").split(":").map(Number);
   const safeOpenH = isNaN(openH) ? 8 : openH;
   const safeOpenM = isNaN(openM) ? 0 : openM;
-  const safeCloseH = isNaN(closeH) ? 20 : closeH;
+  const safeCloseH = isNaN(closeH) ? 22 : closeH;
   const safeCloseM = isNaN(closeM) ? 0 : closeM;
   const interval = config.intervalMinutes && config.intervalMinutes >= 10 ? config.intervalMinutes : 30;
 
@@ -131,7 +131,7 @@ export default function InteractiveCalendar({
     for (let i = 0; i < 7; i++) {
       const d = new Date(monday);
       d.setDate(d.getDate() + i);
-      const dStr = d.toISOString().split("T")[0];
+      const dStr = getLocalDateString(d);
       days.push({
         dateStr: dStr,
         label: `${dayNames[i]} ${d.getDate()}`,
@@ -162,7 +162,7 @@ export default function InteractiveCalendar({
     for (let i = firstDayIndex - 1; i >= 0; i--) {
       const d = new Date(year, month - 1, prevMonthLastDay - i);
       days.push({
-        dateStr: d.toISOString().split("T")[0],
+        dateStr: getLocalDateString(d),
         dayNum: d.getDate(),
         isCurrentMonth: false,
       });
@@ -172,7 +172,7 @@ export default function InteractiveCalendar({
     for (let i = 1; i <= lastDay.getDate(); i++) {
       const d = new Date(year, month, i);
       days.push({
-        dateStr: d.toISOString().split("T")[0],
+        dateStr: getLocalDateString(d),
         dayNum: i,
         isCurrentMonth: true,
       });
@@ -185,7 +185,7 @@ export default function InteractiveCalendar({
       for (let i = 1; i <= pad; i++) {
         const d = new Date(year, month + 1, i);
         days.push({
-          dateStr: d.toISOString().split("T")[0],
+          dateStr: getLocalDateString(d),
           dayNum: i,
           isCurrentMonth: false,
         });
@@ -205,15 +205,15 @@ export default function InteractiveCalendar({
     } else if (viewMode === "month") {
       date.setMonth(date.getMonth() + amount);
     }
-    setSelectedDate(date.toISOString().split("T")[0]);
+    setSelectedDate(getLocalDateString(date));
   };
 
   // Human friendly labels
   const getDayLabel = (dateStr: string) => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = getLocalDateString();
     const tomorrowObj = new Date();
     tomorrowObj.setDate(tomorrowObj.getDate() + 1);
-    const tomorrow = tomorrowObj.toISOString().split("T")[0];
+    const tomorrow = getLocalDateString(tomorrowObj);
 
     if (dateStr === today) return "Hoy";
     if (dateStr === tomorrow) return "Mañana";
@@ -672,7 +672,7 @@ export default function InteractiveCalendar({
                 Hora
               </div>
               {getWeekDays(selectedDate).map(day => {
-                const isToday = day.dateStr === new Date().toISOString().split("T")[0];
+                const isToday = day.dateStr === getLocalDateString();
                 return (
                   <div key={day.dateStr} className={`p-3 text-center space-y-0.5 ${isToday ? "bg-elegant-gold/5" : ""}`}>
                     <span className={`text-xs font-extrabold block truncate font-sans ${isToday ? "text-elegant-gold" : "text-white"}`}>
@@ -702,7 +702,7 @@ export default function InteractiveCalendar({
                   {getWeekDays(selectedDate).map(day => {
                     const apps = getAppointmentsAtWeekCell(day.dateStr, time);
                     const isOver = dragOverCell?.date === day.dateStr && dragOverCell?.time === time;
-                    const isToday = day.dateStr === new Date().toISOString().split("T")[0];
+                    const isToday = day.dateStr === getLocalDateString();
 
                     return (
                       <div
@@ -787,7 +787,7 @@ export default function InteractiveCalendar({
             {getMonthDays(selectedDate).map((day, idx) => {
               const dayApps = getAppointmentsForDayMonth(day.dateStr);
               const isOver = dragOverCell?.date === day.dateStr;
-              const isToday = day.dateStr === new Date().toISOString().split("T")[0];
+              const isToday = day.dateStr === getLocalDateString();
               const isSelected = day.dateStr === selectedDate;
 
               return (

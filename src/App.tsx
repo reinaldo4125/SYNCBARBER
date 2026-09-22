@@ -173,7 +173,7 @@ export default function App() {
   const [config, setConfig] = useState<SalonConfig>({
     name: "Cargando...",
     openTime: "09:00",
-    closeTime: "19:00",
+    closeTime: "22:00",
     workingDays: [1, 2, 3, 4, 5, 6],
     intervalMinutes: 30,
   });
@@ -246,7 +246,7 @@ export default function App() {
     setConfig({
       name: "Cargando...",
       openTime: "09:00",
-      closeTime: "19:00",
+      closeTime: "22:00",
       workingDays: [1, 2, 3, 4, 5, 6],
       intervalMinutes: 30,
       needsSetup: false, // Temporarily false until real configuration is fetched

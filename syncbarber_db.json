@@ -1,0 +1,784 @@
+{
+  "version": "3.5",
+  "updatedAt": "2026-09-21T18:44:52.291Z",
+  "tenants": [
+    {
+      "id": "bella-barba",
+      "name": "Barberia Demo",
+      "licenseType": "premium",
+      "activeLicenseKey": "LIC-PREM-V98X2-2026",
+      "isComplimentary": true,
+      "billingExempt": true
+    }
+  ],
+  "salonAdmins": [
+    {
+      "id": "adm_default",
+      "name": "Administrador General",
+      "username": "admin",
+      "password": "admin",
+      "salonId": "bella-barba"
+    }
+  ],
+  "generatedLicenses": [
+    {
+      "key": "LIC-PREM-V98X2-2026",
+      "salonName": "Barberia Demo",
+      "tenantId": "bella-barba",
+      "licenseType": "premium",
+      "isComplimentary": true,
+      "billingExempt": true,
+      "createdAt": "2026-09-21T13:17:22.839Z",
+      "expirationDate": "2027-09-16",
+      "durationMonths": 12,
+      "ownerEmail": "admin@barberiademo.com",
+      "status": "active",
+      "lastNotificationSent": null,
+      "activatedAt": "2026-09-21T13:17:22.839Z"
+    }
+  ],
+  "helpdeskTickets": [
+    {
+      "tenantId": "bella-barba",
+      "severity": "media",
+      "replies": [
+        {
+          "message": "Hola equipo, hemos intentado con varias configuraciones de papel y sigue sin centrarse perfecto en A5.",
+          "id": "rep_1",
+          "sender": "inquilino",
+          "createdAt": "2026-08-17T13:35:13.434Z"
+        }
+      ],
+      "description": "Al descargar o imprimir el banner diseñado en formato A5, las letras en el cuadro de pasos a seguir se recortan un poco en la impresora Epson L3110. Necesitamos ajustar el margen.",
+      "updatedAt": "2026-08-17T13:35:13.434Z",
+      "title": "Error al imprimir el banner del código QR de promoción",
+      "status": "abierto",
+      "id": "tk_001",
+      "salonName": "Barberia Demo",
+      "createdAt": "2026-08-17T13:35:13.434Z"
+    },
+    {
+      "createdAt": "2026-08-18T13:35:13.434Z",
+      "salonName": "Barberia Demo",
+      "replies": [
+        {
+          "createdAt": "2026-08-18T13:35:13.434Z",
+          "message": "Esto nos está causando algunos cruces de citas hoy. Por favor revisar si es un tema del SSE.",
+          "id": "rep_2",
+          "sender": "inquilino"
+        },
+        {
+          "sender": "soporte",
+          "message": "Hola Mateo, estamos verificando el flujo de eventos en tiempo real. ¿Tienen buena conectividad a Internet en el salón? El SSE mantiene el canal vivo con pings cada 15s.",
+          "createdAt": "2026-08-19T01:35:13.434Z",
+          "id": "rep_3"
+        }
+      ],
+      "title": "Problema con la sincronización del calendario de Mateo Gómez",
+      "tenantId": "bella-barba",
+      "id": "tk_002",
+      "status": "en_progreso",
+      "updatedAt": "2026-08-19T01:35:13.434Z",
+      "description": "Los clientes agendan y en su portal sale confirmado, pero en el panel de Mateo Gómez no aparece la cita reflejada de inmediato, requiere recargar la página.",
+      "severity": "alta"
+    },
+    {
+      "severity": "baja",
+      "tenantId": "bella-barba",
+      "id": "tk_003",
+      "title": "Solicitud de asistencia para migración de base de datos Excel",
+      "updatedAt": "2026-08-16T13:35:13.434Z",
+      "status": "resuelto",
+      "createdAt": "2026-08-14T13:35:13.434Z",
+      "salonName": "Barberia Demo",
+      "replies": [
+        {
+          "id": "rep_4",
+          "createdAt": "2026-08-14T13:35:13.434Z",
+          "message": "Enviamos el archivo de clientes adjunto si es necesario que lo importen directo.",
+          "sender": "inquilino"
+        },
+        {
+          "createdAt": "2026-08-16T13:35:13.434Z",
+          "id": "rep_5",
+          "message": "¡Hola! Hemos procesado su archivo de clientes de manera exitosa en su inquilino. Ya pueden ver todos sus clientes desde el módulo de clientes.",
+          "sender": "soporte"
+        },
+        {
+          "sender": "inquilino",
+          "message": "¡Excelente servicio! Muchas gracias, ya los vemos todos en pantalla.",
+          "id": "rep_6",
+          "createdAt": "2026-08-16T13:35:13.434Z"
+        }
+      ],
+      "description": "Tenemos una lista de 400 clientes frecuentes en Excel y quisiéramos cargarlos de forma masiva para no registrarlos uno por uno. ¿Tienen alguna herramienta de importación?"
+    }
+  ],
+  "tenantData": {
+    "bella-barba": {
+      "config": {
+        "name": "Barberia Demo",
+        "openTime": "09:00",
+        "closeTime": "22:00",
+        "workingDays": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "intervalMinutes": 30,
+        "licenseType": "premium",
+        "activeLicenseKey": "LIC-PREM-V98X2-2026",
+        "isComplimentary": true,
+        "billingExempt": true,
+        "accentColor": "gold",
+        "textColor": "#FFFFFF",
+        "backgroundColor": "#060A13",
+        "cardColor": "#0E1524",
+        "subCardColor": "#162237",
+        "borderColor": "#1F314D",
+        "tagline": "Arte, Precisión & Estilo Masculino",
+        "noShowPenaltyAmount": 10000,
+        "timeFormat": "12h"
+      },
+      "services": [
+        {
+          "id": "s1",
+          "name": "Corte de Autor (Fade / Degradado)",
+          "price": 20000,
+          "duration": 30,
+          "category": "cabello",
+          "description": "Corte moderno personalizado con lavado premium, degradado milimétrico y peinado con cera de alta gama."
+        },
+        {
+          "id": "s2",
+          "name": "Ritual de Barba a Navaja y Vapor",
+          "price": 15000,
+          "duration": 30,
+          "category": "barba",
+          "description": "Afeitado o perfilado con toalla caliente aromática, vapor de ozono para abrir poros y aceites hidratantes."
+        },
+        {
+          "id": "s3",
+          "name": "Combo Imperial (Corte + Ritual de Barba)",
+          "price": 32000,
+          "duration": 60,
+          "category": "cabello",
+          "description": "Nuestra experiencia definitiva. Corte de cabello de autor, ritual completo de barba con toalla caliente y bebida premium de cortesía."
+        },
+        {
+          "id": "s4",
+          "name": "Tinte y Camuflaje de Canas",
+          "price": 35000,
+          "duration": 60,
+          "category": "color",
+          "description": "Coloración sutil para barba o cabello, disimulando canas de forma natural con productos premium sin amoníaco."
+        },
+        {
+          "id": "s5",
+          "name": "Limpieza Facial & Mascarilla de Carbón",
+          "price": 15000,
+          "duration": 30,
+          "category": "tratamiento",
+          "description": "Tratamiento purificante para eliminar impurezas, exfoliación suave y mascarilla negra hidratante."
+        }
+      ],
+      "barbers": [
+        {
+          "id": "b1",
+          "name": "Mateo Gómez (Fade Master)",
+          "username": "mateo",
+          "password": "123",
+          "isActive": true,
+          "specialties": [
+            "cabello",
+            "barba"
+          ]
+        },
+        {
+          "id": "b2",
+          "name": "Santiago Mendoza (Ritual & Afeitado)",
+          "username": "santiago",
+          "password": "123",
+          "isActive": true,
+          "specialties": [
+            "cabello",
+            "barba"
+          ]
+        },
+        {
+          "id": "b3",
+          "name": "Andrés Castro (Classic & Scissors)",
+          "username": "andres",
+          "password": "123",
+          "isActive": true,
+          "specialties": [
+            "cabello",
+            "tratamiento"
+          ]
+        }
+      ],
+      "clients": [
+        {
+          "id": "c_1",
+          "name": "Juan David Castro",
+          "phone": "+57 300 111 2233",
+          "email": "juand@example.com",
+          "password": "123",
+          "membershipId": "silver",
+          "membershipActive": true,
+          "createdAt": "2026-09-21T13:17:22.838Z",
+          "loyaltyPoints": 5,
+          "internalNotes": "Le gusta la toalla muy caliente antes de perfilar la barba. Piel sensible en cuello.",
+          "avgCutCycleDays": 18,
+          "lastCutDate": "2026-07-01",
+          "technicalPreferences": {
+            "fadeType": "Bajo (Low Fade)",
+            "topStyle": "Tijera Texturizado",
+            "beardStyle": "Ritual Toalla Caliente & Navaja",
+            "skinSensitivity": "Piel Sensible / Usar Bálsamo",
+            "favoriteProducts": [
+              "Cera Efecto Mate",
+              "Aceite Nutritivo para Barba"
+            ]
+          },
+          "galleryPhotos": [
+            {
+              "id": "p1",
+              "url": "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&q=80&w=600",
+              "date": "2026-07-01",
+              "styleTag": "Low Fade + Ritual Barba",
+              "barberName": "Santiago Mendoza",
+              "notes": "Excelente acabado con navaja y bálsamo hidratante."
+            }
+          ]
+        },
+        {
+          "id": "c_2",
+          "name": "Carlos Andrés Gómez",
+          "phone": "+57 312 456 7890",
+          "email": "carlos@example.com",
+          "password": "123",
+          "createdAt": "2026-09-21T13:17:22.838Z",
+          "loyaltyPoints": 3,
+          "internalNotes": "Aplica cera mate al finalizar. Prefiere raya marcada a la izquierda.",
+          "avgCutCycleDays": 21,
+          "lastCutDate": "2026-07-16",
+          "technicalPreferences": {
+            "fadeType": "Medio (Mid Fade)",
+            "topStyle": "Pompadour",
+            "beardStyle": "Delineado Navaja Suave",
+            "skinSensitivity": "Normal",
+            "favoriteProducts": [
+              "Polvo Texturizador de Volumen",
+              "Cera Efecto Mate"
+            ]
+          },
+          "galleryPhotos": [
+            {
+              "id": "p2",
+              "url": "https://images.unsplash.com/photo-1622286342621-4bd786c2447c?auto=format&fit=crop&q=80&w=600",
+              "date": "2026-07-16",
+              "styleTag": "Mid Fade Navaja + Pompadour",
+              "barberName": "Mateo Gómez"
+            }
+          ]
+        },
+        {
+          "id": "c_3",
+          "name": "Santiago Pérez",
+          "phone": "+57 321 333 4444",
+          "email": "santiago@example.com",
+          "password": "123",
+          "createdAt": "2026-09-21T13:17:22.838Z",
+          "loyaltyPoints": 1,
+          "internalNotes": "Usa tijera en la parte superior. Cuidado con irritaciones detrás de las orejas.",
+          "avgCutCycleDays": 15,
+          "lastCutDate": "2026-07-08",
+          "technicalPreferences": {
+            "fadeType": "Taper Fade",
+            "topStyle": "Buzz Cut",
+            "beardStyle": "Sin Barba",
+            "skinSensitivity": "Propenso a Irritación con Navaja",
+            "favoriteProducts": [
+              "Shampoo Hydratante"
+            ]
+          },
+          "galleryPhotos": [
+            {
+              "id": "p3",
+              "url": "https://images.unsplash.com/photo-1599566150163-29194dcaad36?auto=format&fit=crop&q=80&w=600",
+              "date": "2026-07-08",
+              "styleTag": "Taper Fade + Tijera Classic",
+              "barberName": "Andrés Castro"
+            }
+          ]
+        },
+        {
+          "id": "c_1790000536660",
+          "name": "Cesar",
+          "phone": "3183762975",
+          "email": "rey4125@gmail.com",
+          "createdAt": "2026-09-21T14:22:16.660Z",
+          "loyaltyPoints": 1,
+          "avgCutCycleDays": 15,
+          "pendingPenalty": 0,
+          "penaltyHistory": [],
+          "birthDate": "1989-09-09",
+          "lastCutDate": "2026-09-21",
+          "birthdayBenefitUsedYears": [
+            "2026"
+          ]
+        }
+      ],
+      "reviews": [
+        {
+          "id": "r1",
+          "clientName": "Juan David Castro",
+          "barberId": "b2",
+          "rating": 5,
+          "comment": "El ritual de barba con vapor de ozono y toallas calientes es de otro mundo. ¡Recomendado 100%!",
+          "date": "2026-07-10"
+        },
+        {
+          "id": "r2",
+          "clientName": "Carlos Andrés Gómez",
+          "barberId": "b1",
+          "rating": 5,
+          "comment": "Mateo hace los mejores degradados de la ciudad. El corte fade quedó impecable y muy detallado.",
+          "date": "2026-07-12"
+        },
+        {
+          "id": "r3",
+          "clientName": "Santiago Pérez",
+          "barberId": "b3",
+          "rating": 5,
+          "comment": "Andrés tiene una técnica increíble con la tijera clásica. Excelente conversación y asesoría.",
+          "date": "2026-07-14"
+        },
+        {
+          "id": "r_1790006705346",
+          "clientName": "Cesar",
+          "barberId": "b1",
+          "rating": 5,
+          "comment": "Excelente servicio",
+          "date": "2026-09-21"
+        }
+      ],
+      "appointments": [
+        {
+          "id": "a1",
+          "clientName": "Carlos Andrés Gómez",
+          "clientPhone": "+57 312 456 7890",
+          "clientEmail": "carlos@example.com",
+          "serviceId": "s1",
+          "serviceName": "Corte de Autor (Fade / Degradado)",
+          "price": 20000,
+          "date": "2026-07-16",
+          "time": "10:30",
+          "duration": 30,
+          "status": "completed",
+          "notes": "Prefiere fade medio.",
+          "hairdresserNotes": "Corte realizado con éxito. Se aplicó pomada mate.",
+          "barberId": "b1",
+          "barberName": "Mateo Gómez (Fade Master)",
+          "createdAt": "2026-07-15T14:20:00.000Z"
+        },
+        {
+          "id": "a2",
+          "clientName": "Juan David Castro",
+          "clientPhone": "+57 300 111 2233",
+          "clientEmail": "juand@example.com",
+          "serviceId": "s2",
+          "serviceName": "Ritual de Barba a Navaja y Vapor",
+          "price": 15000,
+          "date": "2026-07-16",
+          "time": "12:00",
+          "duration": 30,
+          "status": "confirmed",
+          "notes": "Piel sensible.",
+          "barberId": "b2",
+          "barberName": "Santiago Mendoza (Ritual & Afeitado)",
+          "createdAt": "2026-07-15T16:45:00.000Z"
+        },
+        {
+          "id": "a3",
+          "clientName": "Santiago Pérez",
+          "clientPhone": "+57 321 333 4444",
+          "clientEmail": "santiago@example.com",
+          "serviceId": "s3",
+          "serviceName": "Combo Imperial (Corte + Ritual de Barba)",
+          "price": 32000,
+          "date": "2026-07-17",
+          "time": "11:00",
+          "duration": 60,
+          "status": "confirmed",
+          "notes": "Quiere probar la toalla caliente por primera vez.",
+          "barberId": "b3",
+          "barberName": "Andrés Castro (Classic & Scissors)",
+          "createdAt": "2026-07-16T08:00:00.000Z"
+        },
+        {
+          "id": "a_1790000536660",
+          "clientName": "Cesar",
+          "clientPhone": "3183762975",
+          "clientEmail": "rey4125@gmail.com",
+          "serviceId": "s1",
+          "serviceName": "Corte de Autor (Fade / Degradado)",
+          "price": 20000,
+          "date": "2026-09-21",
+          "time": "10:00",
+          "duration": 30,
+          "status": "completed",
+          "notes": "",
+          "barberId": "b1",
+          "barberName": "Mateo Gómez (Fade Master)",
+          "createdAt": "2026-09-21T14:22:16.660Z",
+          "isBirthdayBenefit": false,
+          "birthDate": "1989-09-09",
+          "tip": 0,
+          "paymentMethod": "efectivo"
+        },
+        {
+          "id": "a_1790003413825",
+          "clientName": "Cesar",
+          "clientPhone": "3183762975",
+          "clientEmail": "rey4125@gmail.com",
+          "serviceId": "s1",
+          "serviceName": "Corte de Autor (Fade / Degradado)",
+          "price": 20000,
+          "date": "2026-10-03",
+          "time": "10:00",
+          "duration": 30,
+          "status": "confirmed",
+          "notes": "Agendado automáticamente al finalizar corte previo (Ciclo: 15d)",
+          "barberId": "b1",
+          "barberName": "Mateo Gómez (Fade Master)",
+          "createdAt": "2026-09-21T15:10:13.825Z",
+          "isBirthdayBenefit": false,
+          "birthDate": "1989-09-09"
+        },
+        {
+          "id": "a_1790008745551",
+          "clientName": "Cesar",
+          "clientPhone": "3183762975",
+          "clientEmail": "rey4125@gmail.com",
+          "serviceId": "s1",
+          "serviceName": "Corte de Autor (Fade / Degradado)",
+          "price": 0,
+          "date": "2026-09-21",
+          "time": "14:00",
+          "duration": 30,
+          "status": "confirmed",
+          "notes": "",
+          "barberId": "b1",
+          "barberName": "Mateo Gómez (Fade Master)",
+          "createdAt": "2026-09-21T16:39:05.552Z",
+          "isBirthdayBenefit": true,
+          "birthDate": "1989-09-09"
+        },
+        {
+          "id": "a_1790014260461",
+          "clientName": "Cesar",
+          "clientPhone": "3183762975",
+          "clientEmail": "rey4125@gmail.com",
+          "serviceId": "s1",
+          "serviceName": "Corte de Autor (Fade / Degradado)",
+          "price": 20000,
+          "date": "2026-09-22",
+          "time": "11:00",
+          "duration": 30,
+          "status": "confirmed",
+          "notes": "",
+          "barberId": "b1",
+          "barberName": "Mateo Gómez (Fade Master)",
+          "createdAt": "2026-09-21T18:11:00.461Z",
+          "isBirthdayBenefit": false,
+          "birthDate": "1989-09-09"
+        }
+      ],
+      "catalogStyles": [
+        {
+          "id": "style_mid_fade",
+          "title": "Mid Fade Texturizado",
+          "category": "fade",
+          "categoryLabel": "Degradados & Fades",
+          "photoUrl": "https://images.unsplash.com/photo-1622286342621-4bd786c2447c?w=600&auto=format&fit=crop&q=80",
+          "description": "Degradado medio que comienza a la altura de la sien, combinado con parte superior texturizada a tijera para un acabado con movimiento natural.",
+          "recommendedFace": "Ovalado, Diamante o Cuadrado",
+          "recommendedHair": "Lacio, Ondulado o Grueso",
+          "serviceId": "s1",
+          "serviceName": "Corte de Autor (Fade / Degradado)",
+          "isActive": true,
+          "tags": [
+            "Mid Fade",
+            "Textura",
+            "Matte",
+            "Tijera"
+          ],
+          "createdAt": "2026-09-21T13:17:22.833Z"
+        },
+        {
+          "id": "style_low_taper",
+          "title": "Low Taper Fade Urbano",
+          "category": "fade",
+          "categoryLabel": "Degradados & Fades",
+          "photoUrl": "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=600&auto=format&fit=crop&q=80",
+          "description": "Desvanecido sutil únicamente en patillas y nuca. Mantiene el volumen en los laterales y la zona superior para un look estilizado sin perder densidad.",
+          "recommendedFace": "Alargado, Redondo o Rectangular",
+          "recommendedHair": "Lacio u Ondulado",
+          "serviceId": "s1",
+          "serviceName": "Corte de Autor (Fade / Degradado)",
+          "isActive": true,
+          "tags": [
+            "Taper",
+            "Tendencia",
+            "Limpio",
+            "Juvenil"
+          ],
+          "createdAt": "2026-09-21T13:17:22.834Z"
+        },
+        {
+          "id": "style_high_skin_fade",
+          "title": "High Skin Fade Militar",
+          "category": "fade",
+          "categoryLabel": "Degradados & Fades",
+          "photoUrl": "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=600&auto=format&fit=crop&q=80",
+          "description": "Degradado alto rasurado a piel (afeitadora/shaver) con contraste muy marcado. Máxima frescura y durabilidad del corte.",
+          "recommendedFace": "Cuadrado u Ovalado",
+          "recommendedHair": "Todo tipo de cabello",
+          "serviceId": "s1",
+          "serviceName": "Corte de Autor (Fade / Degradado)",
+          "isActive": true,
+          "tags": [
+            "Skin Fade",
+            "Alto Contraste",
+            "Militar",
+            "Rasurado"
+          ],
+          "createdAt": "2026-09-21T13:17:22.834Z"
+        },
+        {
+          "id": "style_french_crop",
+          "title": "French Crop con Flequillo Recto",
+          "category": "tendencias",
+          "categoryLabel": "Tendencias & Moda",
+          "photoUrl": "https://images.unsplash.com/photo-1621605815971-fbc98d665033?w=600&auto=format&fit=crop&q=80",
+          "description": "Corte de tendencia europea con flequillo recto o texturizado hacia adelante y degradado medio/alto. Muy fácil de peinar en el día a día.",
+          "recommendedFace": "Alargado, Ovalado",
+          "recommendedHair": "Lacio o Ligeramente Ondulado",
+          "serviceId": "s1",
+          "serviceName": "Corte de Autor (Fade / Degradado)",
+          "isActive": true,
+          "tags": [
+            "French Crop",
+            "Flequillo",
+            "Polvo de Volumen",
+            "Moderno"
+          ],
+          "createdAt": "2026-09-21T13:17:22.834Z"
+        },
+        {
+          "id": "style_pompadour_clasico",
+          "title": "Pompadour Ejecutivo Vintage",
+          "category": "clasico",
+          "categoryLabel": "Cortes Clásicos",
+          "photoUrl": "https://images.unsplash.com/photo-1584297091622-af8e5fd63229?w=600&auto=format&fit=crop&q=80",
+          "description": "Estilo atemporal con gran volumen frontal peinado hacia atrás con cera pomada brillante o mate. Laterales pulidos a tijera o máquina.",
+          "recommendedFace": "Redondo, Cuadrado",
+          "recommendedHair": "Medio o Largo, Lacio",
+          "serviceId": "s1",
+          "serviceName": "Corte de Autor (Fade / Degradado)",
+          "isActive": true,
+          "tags": [
+            "Pompadour",
+            "Elegante",
+            "Caballero",
+            "Volumen"
+          ],
+          "createdAt": "2026-09-21T13:17:22.834Z"
+        },
+        {
+          "id": "style_side_part",
+          "title": "Side Part (Raya Marcada al Lado)",
+          "category": "clasico",
+          "categoryLabel": "Cortes Clásicos",
+          "photoUrl": "https://images.unsplash.com/photo-1517832606589-7629c3395907?w=600&auto=format&fit=crop&q=80",
+          "description": "Corte clásico de oficina y eventos formales. División lateral definida a navaja con caída suave y fijación impecable.",
+          "recommendedFace": "Todos los tipos de rostro",
+          "recommendedHair": "Lacio o Fino",
+          "serviceId": "s1",
+          "serviceName": "Corte de Autor (Fade / Degradado)",
+          "isActive": true,
+          "tags": [
+            "Clásico",
+            "Ejecutivo",
+            "Raya",
+            "Formal"
+          ],
+          "createdAt": "2026-09-21T13:17:22.834Z"
+        },
+        {
+          "id": "style_beard_ritual",
+          "title": "Ritual Barba Esculpida & Navaja",
+          "category": "barba",
+          "categoryLabel": "Barba & Afeitado",
+          "photoUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=600&auto=format&fit=crop&q=80",
+          "description": "Perfilado milimétrico de mejillas y cuello a navaja barbera tradicional, rebaje simétrico, toalla caliente al vapor y aceites esenciales.",
+          "recommendedFace": "Ideal para estilizar y marcar la mandíbula",
+          "recommendedHair": "Barba corta, media o poblada",
+          "serviceId": "s2",
+          "serviceName": "Ritual de Barba a Navaja y Vapor",
+          "isActive": true,
+          "tags": [
+            "Barba",
+            "Toalla Caliente",
+            "Vapor de Ozono",
+            "Navaja"
+          ],
+          "createdAt": "2026-09-21T13:17:22.834Z"
+        },
+        {
+          "id": "style_combo_imperial",
+          "title": "Combo Total: Fade + Barba Degradada",
+          "category": "barba",
+          "categoryLabel": "Barba & Afeitado",
+          "photoUrl": "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=600&auto=format&fit=crop&q=80",
+          "description": "La experiencia completa de barbería. Degradado impecable que se funde armónicamente con una barba delineada a navaja con toalla caliente.",
+          "recommendedFace": "Excelente para cualquier morfología",
+          "recommendedHair": "Todo tipo",
+          "serviceId": "s3",
+          "serviceName": "Combo Imperial (Corte + Ritual de Barba)",
+          "isActive": true,
+          "tags": [
+            "Combo",
+            "Experiencia VIP",
+            "Barba & Pelo",
+            "Completo"
+          ],
+          "createdAt": "2026-09-21T13:17:22.834Z"
+        },
+        {
+          "id": "style_burst_fade_mohawk",
+          "title": "Burst Fade / Mohawk Moderno",
+          "category": "tendencias",
+          "categoryLabel": "Tendencias & Moda",
+          "photoUrl": "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=600&auto=format&fit=crop&q=80",
+          "description": "Desvanecido en forma de semicírculo alrededor de las orejas dejando una cresta ancha y texturizada en la parte central y posterior.",
+          "recommendedFace": "Diamante, Ovalado",
+          "recommendedHair": "Rizado, Ondulado o Lacio Grueso",
+          "serviceId": "s1",
+          "serviceName": "Corte de Autor (Fade / Degradado)",
+          "isActive": true,
+          "tags": [
+            "Burst Fade",
+            "Mohawk",
+            "Urbano",
+            "Deportivo"
+          ],
+          "createdAt": "2026-09-21T13:17:22.834Z"
+        },
+        {
+          "id": "style_freestyle_lines",
+          "title": "Diseño Freestyle / Líneas a Navaja",
+          "category": "diseno",
+          "categoryLabel": "Diseños & Freestyle",
+          "photoUrl": "https://images.unsplash.com/photo-1567894340315-735d7c361db0?w=600&auto=format&fit=crop&q=80",
+          "description": "Detalle artístico personalizado en el lateral o nuca: líneas paralelas, grecas o figuras geométricas trazadas con navaja de afeitar.",
+          "recommendedFace": "Todos los tipos",
+          "recommendedHair": "Ideal sobre degradado medio o alto",
+          "serviceId": "s1",
+          "serviceName": "Corte de Autor (Fade / Degradado)",
+          "isActive": true,
+          "tags": [
+            "Freestyle",
+            "Diseño",
+            "Líneas",
+            "Navaja"
+          ],
+          "createdAt": "2026-09-21T13:17:22.834Z"
+        }
+      ],
+      "inventory": [],
+      "sales": []
+    }
+  },
+  "globalAnnouncements": [
+    {
+      "active": true,
+      "type": "info",
+      "id": "ann_1",
+      "createdAt": "2026-09-02T13:35:53.674Z",
+      "title": "🚀 Actualización Plataforma SyncBarber v3.5",
+      "message": "Hemos habilitado el envío automático de alertas de cobro por correo electrónico y el módulo de barberías mejorado."
+    }
+  ],
+  "saasPricingPlans": {
+    "basica": {
+      "customDomain": false,
+      "name": "Plan Básica",
+      "maxBarbers": 2,
+      "price": 35000,
+      "whatsappBot": false,
+      "analytics": false
+    },
+    "profesional": {
+      "name": "Plan Profesional",
+      "whatsappBot": true,
+      "analytics": true,
+      "price": 75000,
+      "maxBarbers": 5,
+      "customDomain": false
+    },
+    "premium": {
+      "customDomain": true,
+      "maxBarbers": 99,
+      "name": "Plan Premium Enterprise",
+      "analytics": true,
+      "whatsappBot": true,
+      "price": 139000
+    }
+  },
+  "memberships": [
+    {
+      "benefits": [
+        "10% de descuento en todos los servicios de barbería",
+        "Prioridad de agendamiento en horas pico",
+        "Bebida sencilla gratis en cada visita (agua o café)"
+      ],
+      "discountPercent": 10,
+      "id": "bronze",
+      "name": "Plan Bronce",
+      "monthlyPrice": 12000,
+      "description": "Ahorra un 10% en todos tus cortes y arreglos."
+    },
+    {
+      "discountPercent": 15,
+      "monthlyPrice": 20000,
+      "name": "Plan Plata",
+      "id": "silver",
+      "description": "Ahorra un 15% y accede a lavados hidratantes de regalo.",
+      "benefits": [
+        "15% de descuento en todos los servicios",
+        "1 lavado capilar hidratante gratuito al mes",
+        "Prioridad de agendamiento garantizada",
+        "Bebida premium de cortesía (gaseosa o té frío)"
+      ]
+    },
+    {
+      "discountPercent": 25,
+      "description": "El plan definitivo para una experiencia de barbería de lujo, ahorrando un 25%.",
+      "benefits": [
+        "25% de descuento en todos los servicios del salón",
+        "Shampoo especial y toalla caliente gratis en cada sesión",
+        "Acceso directo y prioritario 24/7 con tu barbero estrella",
+        "Bebidas premium libres durante tu atención (cerveza o espresso)"
+      ],
+      "monthlyPrice": 35000,
+      "name": "Plan VIP Oro",
+      "id": "gold"
+    }
+  ]
+}

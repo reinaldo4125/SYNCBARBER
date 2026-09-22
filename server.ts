@@ -179,7 +179,7 @@ let tenantData: Record<string, TenantData> = {
     config: {
       name: "Barberia Demo",
       openTime: "09:00",
-      closeTime: "20:00",
+      closeTime: "22:00",
       workingDays: [1, 2, 3, 4, 5, 6], // Lunes a Sábado
       intervalMinutes: 30,
       licenseType: "premium",
@@ -647,7 +647,7 @@ app.put("/api/config", (req, res) => {
 
   // Validation: Hours / Schedule
   const effectiveOpen = openTime || tenant.config.openTime || "08:00";
-  const effectiveClose = closeTime || tenant.config.closeTime || "20:00";
+  const effectiveClose = closeTime || tenant.config.closeTime || "22:00";
 
   const timeToMinutes = (timeStr: string) => {
     const parts = (timeStr || "").split(":").map(Number);
@@ -1735,7 +1735,7 @@ async function loadFromFirestore() {
         config: {
           name: "Barberia Demo",
           openTime: "09:00",
-          closeTime: "20:00",
+          closeTime: "22:00",
           workingDays: [1, 2, 3, 4, 5, 6],
           intervalMinutes: 30,
           licenseType: "premium",
@@ -2083,7 +2083,7 @@ const createTenant = (
     config: {
       name: name,
       openTime: extraDetails.openTime || "08:00",
-      closeTime: extraDetails.closeTime || "20:00",
+      closeTime: extraDetails.closeTime || "22:00",
       workingDays: [1, 2, 3, 4, 5, 6],
       intervalMinutes: 30,
       timeFormat: extraDetails.timeFormat || "12h",
@@ -2226,7 +2226,7 @@ app.post("/api/licenses/generate", (req, res) => {
       address: address || "",
       tagline: tagline || "",
       openTime: openTime || "08:00",
-      closeTime: closeTime || "20:00",
+      closeTime: closeTime || "22:00",
       initialBarbersCount: initialBarbersCount ? Number(initialBarbersCount) : 2,
       customAdminPassword: customAdminPassword || "admin",
       customMaxBarbers: customMaxBarbers ? Number(customMaxBarbers) : undefined,

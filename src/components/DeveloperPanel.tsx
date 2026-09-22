@@ -417,7 +417,7 @@ export default function DeveloperPanel({
   const [customMaxBarbersInput, setCustomMaxBarbersInput] = useState<string>("default");
   const [ownerEmailInput, setOwnerEmailInput] = useState("");
   const [openTimeInput, setOpenTimeInput] = useState("08:00");
-  const [closeTimeInput, setCloseTimeInput] = useState("20:00");
+  const [closeTimeInput, setCloseTimeInput] = useState("22:00");
   const [barbersCountInput, setBarbersCountInput] = useState<number>(2);
   const [customAdminPasswordInput, setCustomAdminPasswordInput] = useState("admin");
   const [generating, setGenerating] = useState(false);
@@ -854,7 +854,7 @@ export default function DeveloperPanel({
           address: addressInput.trim() || undefined,
           tagline: taglineInput.trim() || undefined,
           openTime: openTimeInput || "08:00",
-          closeTime: closeTimeInput || "20:00",
+          closeTime: closeTimeInput || "22:00",
           initialBarbersCount: barbersCountInput || 2,
           customAdminPassword: customAdminPasswordInput.trim() || "admin",
           customMaxBarbers: customMaxBarbersInput === "default" || !customMaxBarbersInput ? undefined : Number(customMaxBarbersInput)

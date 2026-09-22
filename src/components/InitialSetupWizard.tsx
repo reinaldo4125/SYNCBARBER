@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Service, Barber, SalonConfig } from "../types";
+import { formatTime } from "../utils/formatters";
 import { 
   Scissors, 
   Clock, 
@@ -40,7 +41,7 @@ export default function InitialSetupWizard({
   const [salonName, setSalonName] = useState(initialConfig.name);
   const [tagline, setTagline] = useState(initialConfig.tagline || "");
   const [openTime, setOpenTime] = useState(initialConfig.openTime || "09:00");
-  const [closeTime, setCloseTime] = useState(initialConfig.closeTime || "19:00");
+  const [closeTime, setCloseTime] = useState(initialConfig.closeTime || "22:00");
   const [intervalMinutes, setIntervalMinutes] = useState(initialConfig.intervalMinutes || 30);
   const [workingDays, setWorkingDays] = useState<number[]>(initialConfig.workingDays || [1, 2, 3, 4, 5, 6]);
   const [timeFormat, setTimeFormat] = useState<'12h' | '24h'>(initialConfig.timeFormat || "12h");
@@ -316,7 +317,12 @@ export default function InitialSetupWizard({
 
                   {/* Horas */}
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Hora de Apertura</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Hora de Apertura</label>
+                      <span className="text-[10px] font-mono text-elegant-gold font-bold">
+                        {formatTime(openTime, '12h')}
+                      </span>
+                    </div>
                     <input
                       type="time"
                       required
@@ -327,7 +333,12 @@ export default function InitialSetupWizard({
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Hora de Cierre</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-elegant-text-muted uppercase block">Hora de Cierre</label>
+                      <span className="text-[10px] font-mono text-amber-400 font-bold">
+                        {formatTime(closeTime, '12h')}
+                      </span>
+                    </div>
                     <input
                       type="time"
                       required

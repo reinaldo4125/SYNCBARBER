@@ -11,16 +11,46 @@ export interface VersionRelease {
   }[];
 }
 
-export const CURRENT_APP_VERSION = "v2.6.3";
+export const CURRENT_APP_VERSION = "v2.6.4";
 export const CURRENT_APP_BUILD = "2026.09.21-Enterprise";
-export const CURRENT_APP_TAGLINE = "SaaS Multi-Tenant Edition • Portal Unificado & Catálogo en Selección de Servicio";
+export const CURRENT_APP_TAGLINE = "SaaS Multi-Tenant Edition • Horarios Nocturnos & Asistente Visual 12h";
 
 export const APP_VERSION_HISTORY: VersionRelease[] = [
+  {
+    version: "v2.6.4",
+    name: "Disponibilidad Nocturna de Citas & Indicadores Visuales AM/PM",
+    releaseDate: "2026-09-21",
+    isCurrent: true,
+    type: "patch",
+    highlights: [
+      "Ajuste del horario de cierre a las 22:00 (10:00 PM) para habilitar los turnos vespertinos y nocturnos de citas",
+      "Indicadores automáticos en formato 12 Horas (AM/PM) en Ajustes del Salón para evitar confusiones con la hora militar",
+      "Formateo amigable de los horarios en la portada de agendamiento del cliente (ej: 9:00 AM - 10:00 PM)",
+      "Guía y consejos dentro del panel de configuración para agendamiento hasta la hora de cierre o inicio exacto"
+    ],
+    details: [
+      {
+        category: "Disponibilidad y Agendamiento",
+        items: [
+          "Actualización de la hora de cierre predeterminada y persistida a 22:00 (10:00 PM).",
+          "Habilitación de los bloques de reserva nocturnos (8:00 PM, 8:30 PM, 9:00 PM y 9:30 PM) en el portal del cliente.",
+          "Sincronización en tiempo real del horario de atención mostrado en la insignia superior del portal del cliente."
+        ]
+      },
+      {
+        category: "Panel Administrativo y Ajustes",
+        items: [
+          "Insignias dinámicas en tiempo real junto a los selectores de Hora de Apertura y Hora de Cierre en formato 12h.",
+          "Texto explicativo para administradores sobre cómo programar el cierre para abarcar turnos hasta las 10:00 PM o posteriores."
+        ]
+      }
+    ]
+  },
   {
     version: "v2.6.3",
     name: "Unificación de Portal de Cliente & Catálogo de Estilos en Paso 3",
     releaseDate: "2026-09-21",
-    isCurrent: true,
+    isCurrent: false,
     type: "patch",
     highlights: [
       "Unificación de Membresías & Beneficios dentro de la vista 'Mi Portal' (reducción a 2 pestañas principales)",

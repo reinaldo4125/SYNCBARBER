@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { DailyClosure } from "../types";
+import { getLocalDateString } from "../utils/formatters";
 import { 
   Calculator, 
   Coins, 
@@ -45,7 +46,7 @@ export default function CierreCajaModal({
     salesCount: number;
     closures: DailyClosure[];
   }>({
-    date: new Date().toISOString().split("T")[0],
+    date: getLocalDateString(),
     expectedCash: 0,
     expectedDigital: 0,
     expectedCard: 0,

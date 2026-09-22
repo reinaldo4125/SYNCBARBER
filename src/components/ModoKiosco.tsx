@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Appointment, Barber, Service } from "../types";
+import { getLocalDateString } from "../utils/formatters";
 import { 
   CheckCircle2, 
   Search, 
@@ -68,7 +69,7 @@ export default function ModoKiosco({
     time: string;
   } | null>(null);
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = getLocalDateString();
   const todayApps = appointments.filter(a => a.date === today && a.status !== "canceled");
 
   const nowServing = todayApps.filter(a => a.status === "confirmed" || a.status === "en_espera");

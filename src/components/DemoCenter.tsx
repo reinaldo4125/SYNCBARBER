@@ -17,6 +17,7 @@ import {
   Check
 } from "lucide-react";
 import { Barber, SalonConfig } from "../types";
+import { getLocalDateString } from "../utils/formatters";
 
 interface DemoCenterProps {
   currentRole: "client" | "admin" | "barber" | "login" | "developer" | "syncbarber";
@@ -131,7 +132,7 @@ export default function DemoCenter({
       const selectedBarber = activeBarbers.length > 0 ? activeBarbers[Math.floor(Math.random() * activeBarbers.length)] : { id: "b1", name: "Carlos Barber" };
 
       // Set date to today
-      const todayStr = new Date().toISOString().split("T")[0];
+      const todayStr = getLocalDateString();
       
       // Pick a random hour
       const hour = Math.floor(10 + Math.random() * 8); // 10:00 to 18:00

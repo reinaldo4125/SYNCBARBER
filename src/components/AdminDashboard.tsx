@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import AutoReagendaModal from "./AutoReagendaModal";
 import PushNotificationBanner from "./PushNotificationBanner";
-import { formatTime } from "../utils/formatters";
+import { formatTime, getLocalDateString } from "../utils/formatters";
 import { 
   Appointment, 
   Service, 
@@ -79,7 +79,7 @@ export default function AdminDashboard({
 }: AdminDashboardProps) {
   // States
   const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split("T")[0] // Current local date e.g. YYYY-MM-DD
+    getLocalDateString() // Current local date e.g. YYYY-MM-DD
   );
   const [activeSubmodule, setActiveSubmodule] = useState<"agenda" | "caja" | "multas" | "bloqueos" | "all">("agenda");
   const [filterStatus, setFilterStatus] = useState<AppointmentStatus | "all">("all");
@@ -242,14 +242,14 @@ export default function AdminDashboard({
   const adjustDate = (days: number) => {
     const date = new Date(selectedDate + "T12:00:00");
     date.setDate(date.getDate() + days);
-    setSelectedDate(date.toISOString().split("T")[0]);
+    setSelectedDate(getLocalDateString(date));
   };
 
   const getDayLabel = (dateStr: string) => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = getLocalDateString();
     const tomorrowObj = new Date();
     tomorrowObj.setDate(tomorrowObj.getDate() + 1);
-    const tomorrow = tomorrowObj.toISOString().split("T")[0];
+    const tomorrow = getLocalDateString(tomorrowObj);
 
     if (dateStr === today) return "Hoy";
     if (dateStr === tomorrow) return "Mañana";
@@ -265,7 +265,7 @@ export default function AdminDashboard({
     : appointments;
 
   // Calculations for dashboard metrics based on selected date or overall
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = getLocalDateString();
   const todayAppointments = relevantAppointmentsForStats.filter((a) => a.date === selectedDate && a.status !== "canceled");
 
   // Counts of visible appointments for the selected date to keep the dashboard metrics aligned with the agenda below
@@ -676,7 +676,7 @@ export default function AdminDashboard({
                         <input
                           type="date"
                           id="barber-block-time-date"
-                          defaultValue={new Date().toISOString().split("T")[0]}
+                          defaultValue={getLocalDateString()}
                           className="px-3 py-2 bg-elegant-sub border border-elegant-border text-white text-xs rounded-xl focus:outline-none focus:border-elegant-gold"
                         />
                       </div>

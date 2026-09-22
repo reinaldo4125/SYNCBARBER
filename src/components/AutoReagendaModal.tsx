@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Appointment, ClientAccount, Barber, Service } from "../types";
+import { getLocalDateString } from "../utils/formatters";
 import { 
   Calendar, 
   Clock, 
@@ -79,11 +80,11 @@ export default function AutoReagendaModal({
     } catch {
       const d = new Date();
       d.setDate(d.getDate() + daysToAdd);
-      return d.toISOString().split("T")[0];
+      return getLocalDateString(d);
     }
   };
 
-  const baseDate = completedAppointment.date || new Date().toISOString().split("T")[0];
+  const baseDate = completedAppointment.date || getLocalDateString();
 
   // 3 Smart Options
   const option1Date = addDaysToDate(baseDate, cycleDays);
