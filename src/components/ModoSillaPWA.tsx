@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import { Appointment, ClientAccount, Barber, HaircutPhoto, TechnicalPreferences, InventoryItem, Service } from "../types";
 import { formatTime } from "../utils/formatters";
 import { 
@@ -35,11 +36,16 @@ import {
   Banknote,
   CreditCard,
   QrCode,
-  DollarSign
+  DollarSign,
+  Sun,
+  ShieldCheck,
+  Power
 } from "lucide-react";
 import RetentionEngineModal from "./RetentionEngineModal";
 import AutoReagendaModal from "./AutoReagendaModal";
 import { useShiftStartEngine, calculateShiftSummary } from "../utils/useShiftStartEngine";
+import { useScreenWakeLock } from "../utils/useScreenWakeLock";
+import { useAppBadge } from "../utils/useAppBadge";
 
 interface ModoSillaPWAProps {
   appointments: Appointment[];
@@ -103,6 +109,29 @@ export default function ModoSillaPWA({
   // Upload state
   const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Screen Wake Lock Engine (Prevents phone screen from turning off / sleeping during work)
+  const { 
+    isLocked: isWakeLocked, 
+    isSupported: isWakeLockSupported, 
+    toggleLock: toggleWakeLock 
+  } = useScreenWakeLock(true);
+
+  // Exit Confirmation Modal to avoid accidental closing on mobile
+  const [showExitConfirmModal, setShowExitConfirmModal] = useState<boolean>(false);
+
+  // Intercept accidental Android / iOS back swipe gestures to prevent closing
+  useEffect(() => {
+    window.history.pushState({ modoSilla: true }, "");
+    const handlePopState = () => {
+      window.history.pushState({ modoSilla: true }, "");
+      setShowExitConfirmModal(true);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, []);
 
   // Editing technical notes on the fly
   const [quickNote, setQuickNote] = useState<string>("");
@@ -190,10 +219,235 @@ export default function ModoSillaPWA({
     (a) => a.active !== false && (!a.expiresAt || new Date(a.expiresAt).getTime() > Date.now()) && !dismissedAnnouncements.includes(a.id)
   );
 
+  interface FlashNotification {
+    id: string;
+    type: "new_appointment" | "status_change" | "canceled" | "checkin";
+    title: string;
+    message: string;
+    color: "amber" | "emerald" | "cyan" | "rose";
+  }
+
+  // Visual Flash & Pulse state for chair container
+  const [flashEffect, setFlashEffect] = useState<FlashNotification | null>(null);
+  const flashTimeoutRef = useRef<any>(null);
+
+  const triggerVisualPulse = (
+    type: "new_appointment" | "status_change" | "canceled" | "checkin",
+    title: string,
+    message: string
+  ) => {
+    let color: "amber" | "emerald" | "cyan" | "rose" = "amber";
+    if (type === "canceled") color = "rose";
+    else if (type === "checkin") color = "cyan";
+    else if (type === "status_change") color = "emerald";
+
+    const id = Date.now().toString();
+    setFlashEffect({ id, type, title, message, color });
+
+    // Haptic vibration feedback on mobile
+    try {
+      if (typeof navigator !== "undefined" && navigator.vibrate) {
+        if (type === "new_appointment") navigator.vibrate([150, 100, 200, 100, 150]);
+        else if (type === "canceled") navigator.vibrate([250, 100, 250]);
+        else navigator.vibrate([120, 60, 120]);
+      }
+    } catch (e) {}
+
+    // Audio chime using Web Audio API
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        const now = ctx.currentTime;
+        if (type === "new_appointment") {
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(587.33, now); // D5
+          osc.frequency.exponentialRampToValueAtTime(880, now + 0.15); // A5
+          gain.gain.setValueAtTime(0.15, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+          osc.start(now);
+          osc.stop(now + 0.4);
+        } else if (type === "canceled") {
+          osc.type = "triangle";
+          osc.frequency.setValueAtTime(440, now);
+          osc.frequency.exponentialRampToValueAtTime(220, now + 0.25);
+          gain.gain.setValueAtTime(0.15, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+          osc.start(now);
+          osc.stop(now + 0.35);
+        } else {
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(523.25, now); // C5
+          osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.15); // E5
+          gain.gain.setValueAtTime(0.12, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+          osc.start(now);
+          osc.stop(now + 0.3);
+        }
+      }
+    } catch (e) {}
+
+    if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+    flashTimeoutRef.current = setTimeout(() => {
+      setFlashEffect(null);
+    }, 4500);
+  };
+
   const triggerPwaToast = (msg: string) => {
     setPwaToast(msg);
-    setTimeout(() => setPwaToast(""), 3500);
+    setTimeout(() => setPwaToast(""), 4500);
   };
+
+  // Track appointments map to trigger pulse on background SSE updates or changes
+  const prevAppointmentsMapRef = useRef<Map<string, string>>(new Map());
+  const isFirstMountRef = useRef<boolean>(true);
+
+  useEffect(() => {
+    if (isFirstMountRef.current) {
+      isFirstMountRef.current = false;
+      const initialMap = new Map<string, string>();
+      appointments.forEach(a => initialMap.set(a.id, a.status));
+      prevAppointmentsMapRef.current = initialMap;
+      return;
+    }
+
+    const prevMap = prevAppointmentsMapRef.current;
+    const currentMap = new Map<string, string>();
+    let detectedNew: Appointment | null = null;
+    let detectedStatusChange: { appointment: Appointment; oldStatus: string } | null = null;
+
+    appointments.forEach(a => {
+      currentMap.set(a.id, a.status);
+      const isMyBarber = !loggedBarberId || a.barberId === loggedBarberId;
+      if (isMyBarber) {
+        if (!prevMap.has(a.id)) {
+          detectedNew = a;
+        } else if (prevMap.get(a.id) !== a.status) {
+          detectedStatusChange = { appointment: a, oldStatus: prevMap.get(a.id)! };
+        }
+      }
+    });
+
+    prevAppointmentsMapRef.current = currentMap;
+
+    if (detectedNew) {
+      const a = detectedNew as Appointment;
+      triggerVisualPulse(
+        "new_appointment",
+        "¡NUEVO TURNO EN SILLA! 💈",
+        `${a.clientName} • ${formatTime(a.time)} (${a.serviceName || "Servicio"})`
+      );
+    } else if (detectedStatusChange) {
+      const { appointment: a } = detectedStatusChange;
+      if (a.status === "canceled") {
+        triggerVisualPulse(
+          "canceled",
+          "TURNO CANCELADO ⚠️",
+          `${a.clientName} • ${formatTime(a.time)} (Silla liberada)`
+        );
+      } else if (a.status === "en_espera") {
+        triggerVisualPulse(
+          "checkin",
+          "📍 CLIENTE EN SALA DE ESPERA",
+          `${a.clientName} • Listo para ser atendido`
+        );
+      } else if (a.status === "confirmed") {
+        triggerVisualPulse(
+          "status_change",
+          "✅ CITA CONFIRMADA",
+          `${a.clientName} • ${formatTime(a.time)}`
+        );
+      } else if (a.status === "completed") {
+        triggerVisualPulse(
+          "status_change",
+          "🎉 SERVICIO FINALIZADO",
+          `${a.clientName} • Facturado con éxito`
+        );
+      }
+    }
+  }, [appointments, loggedBarberId]);
+
+  // Real-time synchronization of newly created or canceled appointments in ModoSilla
+  useEffect(() => {
+    const handleNewAppointmentEvent = (e: any) => {
+      const { appointment, dateInfo } = e.detail || {};
+      if (!appointment) return;
+
+      const isMyBarber = !loggedBarberId || appointment.barberId === loggedBarberId;
+      if (isMyBarber) {
+        const dateTag = dateInfo?.isToday ? "⚡ HOY" : (dateInfo?.isTomorrow ? "🗓️ MAÑANA" : `🗓️ ${dateInfo?.shortLabel || appointment.date}`);
+        triggerPwaToast(`💈 ¡Nueva Cita (${dateTag})!: ${appointment.clientName} | ${appointment.serviceName || "Servicio"} a las ${formatTime(appointment.time)}`);
+        triggerVisualPulse(
+          "new_appointment",
+          `¡NUEVA CITA AGENDADA (${dateTag})! 💈`,
+          `${appointment.clientName} • ${formatTime(appointment.time)} (${appointment.serviceName || "Servicio"})`
+        );
+      }
+    };
+
+    const handleCanceledAppointmentEvent = (e: any) => {
+      const { appointment } = e.detail || {};
+      if (!appointment) return;
+
+      const isMyBarber = !loggedBarberId || appointment.barberId === loggedBarberId;
+      if (isMyBarber) {
+        triggerPwaToast(`⚠️ Cita de las ${formatTime(appointment.time)} (${appointment.clientName}) fue cancelada y retirada de la silla.`);
+        triggerVisualPulse(
+          "canceled",
+          "TURNO CANCELADO ⚠️",
+          `${appointment.clientName} • ${formatTime(appointment.time)} (Silla liberada)`
+        );
+      }
+    };
+
+    const handleUpdatedAppointmentEvent = (e: any) => {
+      const { appointment } = e.detail || {};
+      if (!appointment) return;
+
+      const isMyBarber = !loggedBarberId || appointment.barberId === loggedBarberId;
+      if (isMyBarber) {
+        if (appointment.checkedIn) {
+          triggerVisualPulse(
+            "checkin",
+            "📍 ¡CLIENTE EN RECEPCIÓN!",
+            `${appointment.clientName} • Llegó para su cita de las ${formatTime(appointment.time)}`
+          );
+        } else if (appointment.status === "en_espera") {
+          triggerVisualPulse(
+            "checkin",
+            "📍 CLIENTE EN SALA DE ESPERA",
+            `${appointment.clientName} • Listo en silla`
+          );
+        } else if (appointment.status === "confirmed") {
+          triggerVisualPulse(
+            "status_change",
+            "✅ CITA CONFIRMADA",
+            `${appointment.clientName} • ${formatTime(appointment.time)}`
+          );
+        } else if (appointment.status === "completed") {
+          triggerVisualPulse(
+            "status_change",
+            "🎉 SERVICIO COMPLETADO",
+            `${appointment.clientName} • Finalizado con éxito`
+          );
+        }
+      }
+    };
+
+    window.addEventListener("syncbarber_new_appointment_received", handleNewAppointmentEvent);
+    window.addEventListener("syncbarber_appointment_canceled_received", handleCanceledAppointmentEvent);
+    window.addEventListener("syncbarber_appointment_updated_received", handleUpdatedAppointmentEvent);
+    return () => {
+      window.removeEventListener("syncbarber_new_appointment_received", handleNewAppointmentEvent);
+      window.removeEventListener("syncbarber_appointment_canceled_received", handleCanceledAppointmentEvent);
+      window.removeEventListener("syncbarber_appointment_updated_received", handleUpdatedAppointmentEvent);
+    };
+  }, [loggedBarberId]);
 
   // Shift Start Alarm and Daily Schedule calculation for barber chair
   const todayShiftData = useMemo(() => {
@@ -209,6 +463,14 @@ export default function ModoSillaPWA({
     onTriggerToast: (title, message) => {
       triggerPwaToast(`${title} • ${message}`);
     }
+  });
+
+  // App Badging API: Synchronize App Icon Badge & Favicon with pending turns
+  const { badgeCount } = useAppBadge({
+    appointments,
+    loggedBarberId,
+    role: "barber",
+    salonName: config?.name || salonName
   });
 
   // Consumptions state inside chair view
@@ -273,17 +535,20 @@ export default function ModoSillaPWA({
     }
   };
 
-  // Filter appointments for selected barber AND selected date (defaults strictly to today)
+  // Filter appointments for selected barber AND selected date (strictly active & completed, excluding canceled)
   const barberAppointments = appointments.filter(app => {
+    // Strictly exclude canceled appointments from active chair workflow
+    if (app.status === "canceled") return false;
     const isMatchingDate = app.date === selectedDate || (selectedDate === defaultToday && app.date === todayISO);
     if (!isMatchingDate) return false;
     if (selectedBarberId === "all") return true;
     return app.barberId === selectedBarberId || !app.barberId;
   });
 
-  // Sort appointments by status (pending/confirmed first) then time
+  // Sort appointments by status (in-progress/pending/confirmed first) then time
   const sortedAppointments = [...barberAppointments].sort((a, b) => {
     const statusOrder: Record<string, number> = {
+      en_espera: 0,
       confirmed: 1,
       pending: 2,
       completed: 3,
@@ -294,17 +559,19 @@ export default function ModoSillaPWA({
     return a.time.localeCompare(b.time);
   });
 
-  // Auto-select first active appointment if none selected or selection not in current date list
+  // Auto-select first pending/confirmed appointment if none selected or if active was canceled/completed
   useEffect(() => {
     if (sortedAppointments.length > 0) {
-      const exists = sortedAppointments.some(a => a.id === selectedAppointmentId);
-      if (!exists || !selectedAppointmentId) {
-        setSelectedAppointmentId(sortedAppointments[0].id);
+      const currentExists = sortedAppointments.find(a => a.id === selectedAppointmentId);
+      if (!currentExists || !selectedAppointmentId) {
+        // Prioritize first active non-completed appointment
+        const nextActive = sortedAppointments.find(a => a.status !== "completed");
+        setSelectedAppointmentId(nextActive ? nextActive.id : sortedAppointments[0].id);
       }
     } else {
       setSelectedAppointmentId("");
     }
-  }, [selectedBarberId, selectedDate, appointments]);
+  }, [selectedBarberId, selectedDate, appointments, sortedAppointments]);
 
   const activeAppointment = sortedAppointments.find(a => a.id === selectedAppointmentId) || sortedAppointments[0];
 
@@ -602,7 +869,106 @@ export default function ModoSillaPWA({
   const cleanPhone = (displayClient.phone || "").replace(/[^0-9+]/g, '');
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#0B0B0E] text-white overflow-y-auto flex flex-col font-sans select-none animate-fadeIn">
+    <div className={`fixed inset-0 z-50 bg-[#0B0B0E] text-white overflow-y-auto flex flex-col font-sans select-none animate-fadeIn transition-colors duration-300 ${
+      flashEffect
+        ? flashEffect.color === "rose"
+          ? "ring-4 sm:ring-8 ring-inset ring-rose-500/80"
+          : flashEffect.color === "cyan"
+          ? "ring-4 sm:ring-8 ring-inset ring-cyan-400/80"
+          : flashEffect.color === "emerald"
+          ? "ring-4 sm:ring-8 ring-inset ring-emerald-400/80"
+          : "ring-4 sm:ring-8 ring-inset ring-amber-400/90"
+        : ""
+    }`}>
+
+      {/* FLASH / PULSE ANIMATION OVERLAY (ALERTA VISUAL EN SILLA) */}
+      <AnimatePresence>
+        {flashEffect && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="fixed inset-0 z-50 pointer-events-none flex flex-col items-center justify-start pt-3 sm:pt-4 px-3"
+          >
+            {/* Animated Pulsing Glowing Ambient Perimeter */}
+            <div
+              className={`absolute inset-0 transition-all duration-300 animate-pulse pointer-events-none ${
+                flashEffect.color === "rose"
+                  ? "bg-rose-500/10 shadow-[inset_0_0_100px_rgba(244,63,94,0.45)]"
+                  : flashEffect.color === "cyan"
+                  ? "bg-cyan-500/10 shadow-[inset_0_0_100px_rgba(34,211,238,0.45)]"
+                  : flashEffect.color === "emerald"
+                  ? "bg-emerald-500/10 shadow-[inset_0_0_100px_rgba(52,211,153,0.45)]"
+                  : "bg-amber-500/10 shadow-[inset_0_0_100px_rgba(245,158,11,0.5)]"
+              }`}
+            />
+
+            {/* Floating Pulsing Alert Badge Card */}
+            <motion.div
+              initial={{ y: -60, scale: 0.9, opacity: 0 }}
+              animate={{ y: 0, scale: 1, opacity: 1 }}
+              exit={{ y: -50, scale: 0.9, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 450, damping: 26 }}
+              className={`relative z-10 max-w-md w-full rounded-2xl p-3.5 sm:p-4 shadow-2xl border backdrop-blur-xl flex items-center gap-3.5 ${
+                flashEffect.color === "rose"
+                  ? "bg-neutral-900/95 border-rose-500 text-white shadow-rose-950/70"
+                  : flashEffect.color === "cyan"
+                  ? "bg-neutral-900/95 border-cyan-400 text-white shadow-cyan-950/70"
+                  : flashEffect.color === "emerald"
+                  ? "bg-neutral-900/95 border-emerald-400 text-white shadow-emerald-950/70"
+                  : "bg-neutral-900/95 border-amber-400 text-white shadow-amber-950/70"
+              }`}
+            >
+              {/* Icon Container with Pulsing Beacon */}
+              <div
+                className={`h-11 w-11 rounded-xl flex items-center justify-center font-bold shrink-0 relative ${
+                  flashEffect.color === "rose"
+                    ? "bg-rose-500/20 text-rose-400 border border-rose-500/50"
+                    : flashEffect.color === "cyan"
+                    ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/50"
+                    : flashEffect.color === "emerald"
+                    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/50"
+                    : "bg-amber-500/20 text-amber-400 border border-amber-500/50"
+                }`}
+              >
+                <span className="w-2.5 h-2.5 rounded-full absolute -top-1 -right-1 animate-ping bg-current" />
+                {flashEffect.color === "rose" ? (
+                  <AlertTriangle className="h-6 w-6 animate-bounce" />
+                ) : flashEffect.color === "cyan" ? (
+                  <Sparkles className="h-6 w-6 animate-spin" />
+                ) : flashEffect.color === "emerald" ? (
+                  <CheckCircle2 className="h-6 w-6 animate-pulse" />
+                ) : (
+                  <Zap className="h-6 w-6 animate-bounce" />
+                )}
+              </div>
+
+              {/* Text content */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                      flashEffect.color === "rose"
+                        ? "bg-rose-500/30 text-rose-300 border border-rose-500/40"
+                        : flashEffect.color === "cyan"
+                        ? "bg-cyan-500/30 text-cyan-300 border border-cyan-500/40"
+                        : flashEffect.color === "emerald"
+                        ? "bg-emerald-500/30 text-emerald-300 border border-emerald-500/40"
+                        : "bg-amber-500/30 text-amber-300 border border-amber-500/40"
+                    }`}
+                  >
+                    {flashEffect.title}
+                  </span>
+                </div>
+                <p className="text-xs sm:text-sm font-extrabold text-white mt-1 truncate">
+                  {flashEffect.message}
+                </p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       
       {/* HEADER PWA TOP BAR */}
       <header className="sticky top-0 z-40 bg-[#121217]/95 backdrop-blur-md border-b border-elegant-gold/30 px-3 sm:px-4 py-2.5 flex items-center justify-between shadow-xl gap-2">
@@ -611,7 +977,7 @@ export default function ModoSillaPWA({
             <Smartphone className="h-4 w-4" />
           </div>
           <div className="min-w-0 truncate">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-xs font-black text-white uppercase tracking-wider font-sans truncate">
                 MODO SILLA
               </span>
@@ -619,6 +985,15 @@ export default function ModoSillaPWA({
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
                 PWA
               </span>
+              {badgeCount > 0 && (
+                <span
+                  className="inline-flex bg-rose-500 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full items-center gap-0.5 shadow-sm shadow-rose-950 shrink-0 animate-pulse cursor-help"
+                  title={`App Badging API activo: ${badgeCount} turnos pendientes sincronizados con el ícono de la app en tu celular.`}
+                >
+                  <span className="w-1 h-1 rounded-full bg-white"></span>
+                  {badgeCount} {badgeCount === 1 ? "pendiente" : "pendientes"}
+                </span>
+              )}
             </div>
             <p className="text-[10px] text-neutral-400 truncate hidden lg:block">
               Vista Ultra Rápida para Barberos
@@ -627,6 +1002,32 @@ export default function ModoSillaPWA({
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
+          {/* Botón Pantalla Siempre Activa (Wake Lock Anti-Apagado) */}
+          <button
+            onClick={async () => {
+              await toggleWakeLock();
+              if (!isWakeLocked) {
+                triggerPwaToast("☀️ Pantalla Siempre Activa: tu celular no se apagará ni bloqueará.");
+              } else {
+                triggerPwaToast("🌙 Modo estándar de pantalla activado.");
+              }
+            }}
+            className={`px-2 sm:px-2.5 py-1.5 rounded-xl text-[10px] font-extrabold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95 ${
+              isWakeLocked
+                ? "bg-amber-500/25 border border-amber-500/60 text-amber-300 shadow-amber-950/40"
+                : "bg-neutral-800/80 border border-neutral-700/80 text-neutral-400 hover:text-neutral-200"
+            }`}
+            title={isWakeLocked ? "Pantalla siempre encendida (Anti-bloqueo activo)" : "Activar pantalla siempre encendida"}
+          >
+            <Sun className={`h-3.5 w-3.5 shrink-0 ${isWakeLocked ? "text-amber-400 animate-pulse" : "text-neutral-400"}`} />
+            <span className="hidden sm:inline">
+              {isWakeLocked ? "Pantalla Activa" : "Bloqueo Estándar"}
+            </span>
+            {isWakeLocked && (
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping shrink-0 hidden md:inline-block"></span>
+            )}
+          </button>
+
           {/* Botón Mi Jornada / Turnos del Día */}
           <button
             onClick={() => {
@@ -663,10 +1064,10 @@ export default function ModoSillaPWA({
             <span className="hidden lg:inline">Instalar</span>
           </button>
 
-          {/* Salir / Cerrar */}
+          {/* Salir / Cerrar con Confirmación para no cerrar accidentalmente */}
           {onClose && (
             <button
-              onClick={onClose}
+              onClick={() => setShowExitConfirmModal(true)}
               className="p-1.5 text-neutral-300 hover:text-white bg-neutral-800/80 border border-neutral-700/80 hover:bg-rose-900/50 hover:border-rose-700 rounded-xl cursor-pointer transition-all shrink-0"
               title="Salir de Modo Silla"
             >
@@ -2004,6 +2405,44 @@ export default function ModoSillaPWA({
                   );
                 })}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMACIÓN DE SALIDA (ANTI-CIERRE ACCIDENTAL) */}
+      {showExitConfirmModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-neutral-900 border border-neutral-700 rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl animate-scale-in">
+            <div className="h-16 w-16 bg-amber-500/20 text-amber-400 rounded-2xl flex items-center justify-center mx-auto border border-amber-500/40">
+              <Sun className="h-8 w-8 animate-pulse" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-base font-extrabold text-white">¿Deseas salir de Modo Silla?</h3>
+              <p className="text-xs text-neutral-300 leading-relaxed">
+                En Modo Silla la pantalla de tu celular permanece siempre activa sin apagarse. Si sales, regresarás a la vista general.
+              </p>
+            </div>
+
+            <div className="pt-2 flex flex-col gap-2.5">
+              <button
+                onClick={() => setShowExitConfirmModal(false)}
+                className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-extrabold text-sm rounded-xl shadow-lg cursor-pointer transition-all active:scale-98 flex items-center justify-center gap-2"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                <span>Continuar en Modo Silla</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowExitConfirmModal(false);
+                  if (onClose) onClose();
+                }}
+                className="w-full py-2.5 bg-neutral-800/80 hover:bg-rose-950/60 border border-neutral-700 hover:border-rose-800 text-neutral-300 hover:text-rose-200 text-xs font-bold rounded-xl transition-all cursor-pointer"
+              >
+                Salir a la Agenda General
+              </button>
             </div>
           </div>
         </div>

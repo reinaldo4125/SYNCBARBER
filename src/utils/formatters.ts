@@ -22,6 +22,80 @@ export function getLocalDateString(dateInput: Date | string | number = new Date(
   return `${year}-${month}-${day}`;
 }
 
+export function formatAppointmentDateLabel(dateStr: string | undefined | null): {
+  isToday: boolean;
+  isTomorrow: boolean;
+  isDifferentDay: boolean;
+  badge: string;
+  dayDescription: string;
+  shortLabel: string;
+} {
+  if (!dateStr) {
+    return {
+      isToday: false,
+      isTomorrow: false,
+      isDifferentDay: false,
+      badge: "Cita",
+      dayDescription: "",
+      shortLabel: ""
+    };
+  }
+
+  const cleanDate = dateStr.trim();
+  const todayStr = getLocalDateString();
+  const tomorrowObj = new Date();
+  tomorrowObj.setDate(tomorrowObj.getDate() + 1);
+  const tomorrowStr = getLocalDateString(tomorrowObj);
+
+  if (cleanDate === todayStr) {
+    return {
+      isToday: true,
+      isTomorrow: false,
+      isDifferentDay: false,
+      badge: "⚡ PARA HOY",
+      dayDescription: "Hoy",
+      shortLabel: "Hoy"
+    };
+  }
+
+  if (cleanDate === tomorrowStr) {
+    const parts = cleanDate.split("-");
+    const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+    const day = parts[2] ? parseInt(parts[2], 10) : "";
+    const mName = parts[1] ? (months[parseInt(parts[1], 10) - 1] || parts[1]) : "";
+    const dateFormatted = day ? `${day} ${mName}` : cleanDate;
+
+    return {
+      isToday: false,
+      isTomorrow: true,
+      isDifferentDay: true,
+      badge: "🗓️ PARA MAÑANA",
+      dayDescription: `Mañana (${dateFormatted})`,
+      shortLabel: `Mañana`
+    };
+  }
+
+  // Future or different day
+  const parts = cleanDate.split("-");
+  const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+  let dayFormatted = cleanDate;
+  if (parts.length === 3) {
+    const dayNum = parseInt(parts[2], 10);
+    const mIdx = parseInt(parts[1], 10) - 1;
+    const mName = months[mIdx] || parts[1];
+    dayFormatted = `${dayNum} de ${mName}`;
+  }
+
+  return {
+    isToday: false,
+    isTomorrow: false,
+    isDifferentDay: true,
+    badge: `🗓️ DÍA DISTINTO (${dayFormatted})`,
+    dayDescription: `el ${dayFormatted}`,
+    shortLabel: dayFormatted
+  };
+}
+
 export function formatTime(timeStr: string | undefined | null, timeFormat: '12h' | '24h' = '12h'): string {
   if (!timeStr) return "";
   const str = String(timeStr).trim();

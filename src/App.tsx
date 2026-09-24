@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Appointment, Service, SalonConfig, Barber, MembershipPlan, BarberReview, ClientAccount, InventoryItem, ProductSale } from "./types";
 import { motion, AnimatePresence } from "motion/react";
 import { 
@@ -24,6 +24,7 @@ import {
   LogOut,
   ChevronRight
 } from "lucide-react";
+import { getLocalDateString, formatTime, formatAppointmentDateLabel } from "./utils/formatters";
 import ClientDashboard from "./components/ClientDashboard";
 import AdminDashboard from "./components/AdminDashboard";
 import SalonSettings from "./components/SalonSettings";
@@ -52,6 +53,7 @@ import { playNotificationSound, NotificationType } from "./utils/notificationSou
 import { showPushNotification } from "./utils/pushNotifications";
 import { use30MinReminderEngine } from "./utils/use30MinReminderEngine";
 import { useShiftStartEngine } from "./utils/useShiftStartEngine";
+import { useAppBadge } from "./utils/useAppBadge";
 
 interface RealTimeToast {
   id: string;
@@ -112,8 +114,26 @@ export default function App() {
   const [loggedUser, setLoggedUser] = useState<{ id: string; name: string; username: string; role: 'admin' | 'barber'; barberId?: string; salonId?: string } | null>(null);
   const [isModoSillaActive, setIsModoSillaActive] = useState<boolean>(() => {
     const params = new URLSearchParams(window.location.search);
-    return params.get("mode") === "silla" || params.get("pwa") === "1";
+    if (params.get("mode") === "silla" || params.get("pwa") === "1") return true;
+    try {
+      return localStorage.getItem("syncbarber_modo_silla_active") === "true";
+    } catch {
+      return false;
+    }
   });
+
+  // Keep Modo Silla state synchronized in localStorage across app restarts
+  useEffect(() => {
+    try {
+      if (isModoSillaActive) {
+        localStorage.setItem("syncbarber_modo_silla_active", "true");
+      } else {
+        localStorage.removeItem("syncbarber_modo_silla_active");
+      }
+    } catch (e) {
+      console.error("Error persisting modo silla state:", e);
+    }
+  }, [isModoSillaActive]);
   const [showKioscoModal, setShowKioscoModal] = useState<boolean>(false);
   const [showCierreCajaModal, setShowCierreCajaModal] = useState<boolean>(false);
   const [showVersionModal, setShowVersionModal] = useState<boolean>(false);
@@ -187,6 +207,19 @@ export default function App() {
   const [toasts, setToasts] = useState<RealTimeToast[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  // Sync state refs to prevent stale closure access in SSE & interval handlers
+  const loggedUserRef = useRef(loggedUser);
+  loggedUserRef.current = loggedUser;
+
+  const currentRoleRef = useRef(currentRole);
+  currentRoleRef.current = currentRole;
+
+  const appointmentsRef = useRef(appointments);
+  appointmentsRef.current = appointments;
+
+  const notifiedAppointmentIdsRef = useRef<Set<string>>(new Set());
+  const knownAppointmentIdsRef = useRef<Set<string>>(new Set());
+
   // Toast controller with audio chime sound options
   const triggerToast = (
     title: string, 
@@ -194,21 +227,112 @@ export default function App() {
     type: "success" | "info" | "warning" = "info",
     soundType: NotificationType = "new_booking"
   ) => {
-    const id = Date.now().toString();
+    const id = Date.now().toString() + "-" + Math.random().toString(36).substring(2, 6);
     const newToast: RealTimeToast = { id, title, message, type };
     setToasts((prev) => [...prev, newToast]);
     
     // Play synthesized Web Audio chime
     playNotificationSound(soundType);
 
-    // Auto delete after 5.5 seconds
+    // Auto delete after 6.5 seconds
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 5500);
+    }, 6500);
   };
 
   const removeToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  // Centralized Barber & Staff Appointment Notification Engine
+  const notifyBarberNewAppointment = (appointment: Appointment) => {
+    if (!appointment || !appointment.id) return;
+
+    // Prevent duplicate alert triggers for the same appointment ID
+    if (notifiedAppointmentIdsRef.current.has(appointment.id)) {
+      return;
+    }
+    notifiedAppointmentIdsRef.current.add(appointment.id);
+    knownAppointmentIdsRef.current.add(appointment.id);
+
+    const currentLogged = loggedUserRef.current;
+    const currentRoleActive = currentRoleRef.current;
+
+    let storedUser: any = null;
+    try {
+      const raw = localStorage.getItem("syncbarber_logged_user");
+      if (raw) storedUser = JSON.parse(raw);
+    } catch (e) {}
+
+    const activeUser = currentLogged || storedUser;
+    const activeBarberId = activeUser?.barberId || activeUser?.id;
+    const isAssignedToMe = Boolean(activeBarberId && appointment.barberId === activeBarberId);
+
+    // Check staff permissions (admin, barber, developer)
+    const isStaff = Boolean(
+      (activeUser && (activeUser.role === "admin" || activeUser.role === "barber" || activeUser.role === "developer")) ||
+      currentRoleActive === "admin" || currentRoleActive === "barber" || currentRoleActive === "developer"
+    );
+
+    const dateInfo = formatAppointmentDateLabel(appointment.date);
+    const formattedTimeStr = formatTime(appointment.time);
+
+    // Floating title clearly distinguishing whether the booking is for TODAY or a DIFFERENT DAY
+    let notifTitle = "";
+    if (isAssignedToMe) {
+      if (dateInfo.isToday) {
+        notifTitle = "🚨 ¡Nueva Cita Asignada para HOY! 💈";
+      } else if (dateInfo.isTomorrow) {
+        notifTitle = "🗓️ ¡Nueva Cita Asignada para MAÑANA! 💈";
+      } else {
+        notifTitle = `🗓️ ¡Nueva Cita Asignada (${dateInfo.shortLabel})! 💈`;
+      }
+    } else {
+      if (dateInfo.isToday) {
+        notifTitle = "💈 ¡Nueva Cita Agendada para HOY!";
+      } else if (dateInfo.isTomorrow) {
+        notifTitle = "🗓️ ¡Nueva Cita Agendada para MAÑANA!";
+      } else {
+        notifTitle = `🗓️ ¡Nueva Cita Agendada (${dateInfo.shortLabel})!`;
+      }
+    }
+
+    const barberSuffix = appointment.barberName ? ` • Barbero: ${appointment.barberName}` : "";
+    const whenText = dateInfo.isToday 
+      ? `HOY a las ${formattedTimeStr}` 
+      : `${dateInfo.dayDescription} a las ${formattedTimeStr}`;
+
+    const notifBody = `Cliente: ${appointment.clientName} | ${appointment.serviceName || "Servicio"} | ⏰ ${whenText}${barberSuffix}`;
+
+    // Trigger floating in-app banner for staff/barbers
+    if (isStaff) {
+      triggerToast(
+        notifTitle, 
+        notifBody, 
+        dateInfo.isToday ? "warning" : "success",
+        "new_booking"
+      );
+
+      // Native Web Push Notification with vibration pattern
+      showPushNotification(notifTitle, {
+        body: notifBody,
+        tag: `new-app-${appointment.id}-${Date.now()}`,
+        vibrate: dateInfo.isToday ? [500, 150, 500, 150, 500] : [300, 100, 300],
+        requireInteraction: true,
+        metadata: {
+          clientName: appointment.clientName,
+          time: formattedTimeStr,
+          serviceName: appointment.serviceName,
+          barberName: appointment.barberName,
+          appointmentId: appointment.id
+        }
+      });
+    }
+
+    // Broadcast window event for ModoSilla and other subviews
+    window.dispatchEvent(new CustomEvent("syncbarber_new_appointment_received", {
+      detail: { appointment, dateInfo, isAssignedToMe }
+    }));
   };
 
   // Real-time 30-Minute Advance Reminder Engine
@@ -282,9 +406,15 @@ export default function App() {
           console.log(`[SSE Evento] ${type}`, data);
 
           if (type === "init") {
-            setAppointments(data.appointments);
-            setServices(data.services);
-            setConfig(data.config);
+            if (data.appointments && Array.isArray(data.appointments)) {
+              setAppointments(data.appointments);
+              data.appointments.forEach((app: Appointment) => {
+                knownAppointmentIdsRef.current.add(app.id);
+                notifiedAppointmentIdsRef.current.add(app.id);
+              });
+            }
+            if (data.services) setServices(data.services);
+            if (data.config) setConfig(data.config);
             if (data.barbers) setBarbers(data.barbers);
             if (data.memberships) setMemberships(data.memberships);
             if (data.reviews) setReviews(data.reviews);
@@ -318,34 +448,11 @@ export default function App() {
             setServices(data);
             triggerToast("Catálogo Actualizado", "Los precios y servicios de peluquería han sido actualizados en vivo.", "info");
           } else if (type === "appointment_created") {
-            setAppointments(data.appointments);
-
-            const activeBarberId = loggedUser?.barberId || loggedUser?.id;
-            const isAssignedToMe = activeBarberId && data.appointment.barberId === activeBarberId;
-            const isStaff = (loggedUser && (loggedUser.role === "admin" || loggedUser.role === "barber")) || currentRole === "admin" || currentRole === "barber";
-
-            const notifTitle = isAssignedToMe 
-              ? "🚨 ¡Nueva Cita Asignada a Ti! 💈" 
-              : "💈 ¡Nueva Cita Agendada!";
-
-            const barberSuffix = data.appointment.barberName ? ` • Con ${data.appointment.barberName}` : "";
-            const notifBody = `Cliente: ${data.appointment.clientName} | ${data.appointment.serviceName} a las ${data.appointment.time}${barberSuffix}`;
-
-            // Notify staff members in-app with audible chime
-            if (isStaff) {
-              triggerToast(
-                notifTitle, 
-                notifBody, 
-                "success",
-                "new_booking"
-              );
-              // Native Web Push Notification (works with tab in background / locked phone)
-              showPushNotification(notifTitle, {
-                body: notifBody,
-                tag: `new-app-${data.appointment.id}`,
-                vibrate: [400, 150, 400, 150, 400],
-                requireInteraction: true
-              });
+            if (data.appointments) {
+              setAppointments(data.appointments);
+            }
+            if (data.appointment) {
+              notifyBarberNewAppointment(data.appointment);
             }
           } else if (type === "appointment_updated") {
             setAppointments(data.appointments);
@@ -364,6 +471,39 @@ export default function App() {
               });
             }
 
+            // Check if appointment was canceled
+            if (data.appointment.status === "canceled") {
+              const currentLogged = loggedUserRef.current;
+              const currentRoleActive = currentRoleRef.current;
+              const activeBarberId = currentLogged?.barberId || currentLogged?.id;
+              const isAssignedToMe = Boolean(activeBarberId && data.appointment.barberId === activeBarberId);
+              const isStaff = Boolean(
+                (currentLogged && (currentLogged.role === "admin" || currentLogged.role === "barber" || currentLogged.role === "developer")) ||
+                currentRoleActive === "admin" || currentRoleActive === "barber" || currentRoleActive === "developer"
+              );
+
+              if (isStaff) {
+                const title = isAssignedToMe ? "⚠️ Tu Turno Fue Cancelado 💈" : "⚠️ Cita Cancelada";
+                const body = `Cita de las ${formatTime(data.appointment.time)} (${data.appointment.clientName}) ha sido cancelada. La silla quedó liberada.`;
+                triggerToast(title, body, "warning", "new_booking");
+                showPushNotification(title, {
+                  body,
+                  tag: `cancel-app-${data.appointment.id}`,
+                  vibrate: [250, 100, 250]
+                });
+              }
+
+              // Broadcast cancellation event to ModoSilla and other sub-views
+              window.dispatchEvent(new CustomEvent("syncbarber_appointment_canceled_received", {
+                detail: { appointment: data.appointment }
+              }));
+            }
+
+            // Broadcast update event to ModoSilla and other sub-views
+            window.dispatchEvent(new CustomEvent("syncbarber_appointment_updated_received", {
+              detail: { appointment: data.appointment }
+            }));
+
             // Check if this updated appointment is owned by the client
             const savedIdsStr = localStorage.getItem("bella_barba_appointments");
             const myIds = savedIdsStr ? JSON.parse(savedIdsStr) : [];
@@ -374,11 +514,12 @@ export default function App() {
                 confirmed: "CONFIRMADA 💚",
                 canceled: "CANCELADA 💔",
                 completed: "REALIZADA 🎉",
-                pending: "RE-EVALUADA ⏳"
+                pending: "RE-EVALUADA ⏳",
+                en_espera: "EN ESPERA EN SALA 📍"
               };
               triggerToast(
                 "¡Estado de tu cita cambiado!", 
-                `Tu cita para ${data.appointment.serviceName} a las ${data.appointment.time} ahora está: ${statusTranslations[data.appointment.status]}`, 
+                `Tu cita para ${data.appointment.serviceName} a las ${data.appointment.time} ahora está: ${statusTranslations[data.appointment.status] || data.appointment.status}`, 
                 data.appointment.status === "confirmed" ? "success" : data.appointment.status === "canceled" ? "warning" : "info"
               );
             } else {
@@ -419,7 +560,18 @@ export default function App() {
         const stateRes = await fetch("/api/state", { headers: fallbackHeaders });
         if (stateRes.ok) {
           const data = await stateRes.json();
-          if (data.appointments) setAppointments(data.appointments);
+          if (data.appointments && Array.isArray(data.appointments)) {
+            // If initialized before, notify for any newly arrived appointments
+            if (knownAppointmentIdsRef.current.size > 0) {
+              data.appointments.forEach((app: Appointment) => {
+                if (!knownAppointmentIdsRef.current.has(app.id)) {
+                  notifyBarberNewAppointment(app);
+                }
+              });
+            }
+            data.appointments.forEach((app: Appointment) => knownAppointmentIdsRef.current.add(app.id));
+            setAppointments(data.appointments);
+          }
           if (data.services) setServices(data.services);
           if (data.config) setConfig(data.config);
           if (data.barbers) setBarbers(data.barbers);
@@ -478,7 +630,17 @@ export default function App() {
       const stateRes = await fetch("/api/state", { headers: fallbackHeaders });
       if (stateRes.ok) {
         const data = await stateRes.json();
-        if (data.appointments) setAppointments(data.appointments);
+        if (data.appointments && Array.isArray(data.appointments)) {
+          if (knownAppointmentIdsRef.current.size > 0) {
+            data.appointments.forEach((app: Appointment) => {
+              if (!knownAppointmentIdsRef.current.has(app.id)) {
+                notifyBarberNewAppointment(app);
+              }
+            });
+          }
+          data.appointments.forEach((app: Appointment) => knownAppointmentIdsRef.current.add(app.id));
+          setAppointments(data.appointments);
+        }
         if (data.services) setServices(data.services);
         if (data.config) setConfig(data.config);
         if (data.barbers) setBarbers(data.barbers);
@@ -562,7 +724,12 @@ export default function App() {
         const errData = await res.json();
         throw new Error(errData.message || "Conflicto o error al agendar.");
       }
-      return await res.json();
+      const createdApp = await res.json();
+      // Ensure instantaneous floating notification for the barber
+      if (createdApp && createdApp.id) {
+        notifyBarberNewAppointment(createdApp);
+      }
+      return createdApp;
     } catch (e) {
       console.error(e);
       throw e;
@@ -816,6 +983,14 @@ export default function App() {
     triggerToast("Sesión Cerrada", "Has salido del panel administrativo.", "info");
   };
 
+  // App Badging API: Syncs red bubble counter to phone home screen PWA icon & tab
+  const { badgeCount: globalBadgeCount } = useAppBadge({
+    appointments,
+    loggedBarberId: currentRole === "barber" ? (loggedUser?.barberId || loggedUser?.id) : null,
+    role: currentRole as any,
+    salonName: config?.name
+  });
+
   // Currency formatter
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat("es-CO", {
@@ -1062,11 +1237,16 @@ export default function App() {
                   {canShowModoSilla && (
                     <button
                       onClick={() => setIsModoSillaActive(true)}
-                      className="px-2.5 py-1.5 bg-gradient-to-r from-amber-600/30 to-amber-500/20 border border-amber-500/50 hover:bg-amber-500/30 text-amber-300 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm whitespace-nowrap"
-                      title="Abrir Vista Móvil PWA para Barberos en Silla"
+                      className="relative px-2.5 py-1.5 bg-gradient-to-r from-amber-600/30 to-amber-500/20 border border-amber-500/50 hover:bg-amber-500/30 text-amber-300 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm whitespace-nowrap"
+                      title={globalBadgeCount > 0 ? `Modo Silla (${globalBadgeCount} turnos pendientes hoy)` : "Abrir Vista Móvil PWA para Barberos en Silla"}
                     >
                       <Smartphone className="h-3.5 w-3.5 text-amber-400 animate-pulse" />
                       <span>📱 Modo Silla</span>
+                      {globalBadgeCount > 0 && (
+                        <span className="bg-rose-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full leading-none shadow-xs shadow-rose-950 animate-pulse">
+                          {globalBadgeCount}
+                        </span>
+                      )}
                     </button>
                   )}
 
@@ -1442,13 +1622,20 @@ export default function App() {
                               setIsModoSillaActive(true);
                               setMobileMenuOpen(false);
                             }}
-                            className="w-full p-3 rounded-xl text-xs font-bold flex items-center gap-3 bg-gradient-to-r from-amber-600/20 to-amber-500/10 border border-amber-500/40 text-amber-300 hover:bg-amber-500/20 transition-all text-left cursor-pointer active:scale-95"
+                            className="w-full p-3 rounded-xl text-xs font-bold flex items-center justify-between bg-gradient-to-r from-amber-600/20 to-amber-500/10 border border-amber-500/40 text-amber-300 hover:bg-amber-500/20 transition-all text-left cursor-pointer active:scale-95"
                           >
-                            <Smartphone className="h-5 w-5 text-amber-400 shrink-0" />
-                            <div>
-                              <p className="font-extrabold text-sm">Modo Silla</p>
-                              <p className="text-[10px] text-amber-300/70 font-normal">PWA para barberos en sillón</p>
+                            <div className="flex items-center gap-3 min-w-0">
+                              <Smartphone className="h-5 w-5 text-amber-400 shrink-0" />
+                              <div className="min-w-0">
+                                <p className="font-extrabold text-sm">Modo Silla</p>
+                                <p className="text-[10px] text-amber-300/70 font-normal">PWA para barberos en sillón</p>
+                              </div>
                             </div>
+                            {globalBadgeCount > 0 && (
+                              <span className="bg-rose-500 text-white text-xs font-black px-2 py-0.5 rounded-full shadow-sm shadow-rose-950 animate-pulse shrink-0">
+                                {globalBadgeCount} {globalBadgeCount === 1 ? "cita" : "citas"}
+                              </span>
+                            )}
                           </button>
                         )}
 
@@ -2100,35 +2287,45 @@ export default function App() {
       {/* Banner flotante de Alarma Continua Activa */}
       <ActiveAlarmBanner />
 
-      {/* 5. Contenedor de Toasts Real-Time Flotantes */}
-      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full px-4 sm:px-0 pointer-events-none">
+      {/* 5. Contenedor de Toasts Real-Time Flotantes con Prioridad Máxima z-[9999] */}
+      <div className="fixed top-4 right-4 sm:top-auto sm:bottom-4 sm:right-4 z-[9999] flex flex-col gap-2.5 max-w-md w-full px-3 sm:px-0 pointer-events-none">
         <AnimatePresence>
           {toasts.map((t) => (
             <motion.div
               key={t.id}
-              initial={{ opacity: 0, x: 50, scale: 0.9 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, x: 50, scale: 0.9 }}
-              className={`pointer-events-auto p-4 rounded-2xl shadow-lg border flex items-start gap-3 backdrop-blur-md ${
-                t.type === "success" 
-                  ? "bg-emerald-950/95 border-emerald-800 text-emerald-100" 
-                  : t.type === "warning" 
-                    ? "bg-rose-950/95 border-rose-800 text-rose-100" 
-                    : "bg-elegant-card/95 border-elegant-border text-elegant-text"
+              initial={{ opacity: 0, y: -20, scale: 0.92 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.92 }}
+              transition={{ type: "spring", stiffness: 400, damping: 25 }}
+              className={`pointer-events-auto p-4 rounded-2xl shadow-2xl border flex items-start gap-3.5 backdrop-blur-xl transition-all ${
+                t.title.includes("HOY") || t.type === "warning"
+                  ? "bg-neutral-950/98 border-amber-500/80 text-amber-50 ring-2 ring-amber-500/30 shadow-amber-950/50"
+                  : t.type === "success"
+                    ? "bg-neutral-950/98 border-emerald-500/80 text-emerald-50 ring-1 ring-emerald-500/30 shadow-emerald-950/50"
+                    : "bg-neutral-950/98 border-cyan-500/60 text-cyan-50 shadow-black/80"
               }`}
             >
-              <div className="p-1 bg-white/10 rounded-lg shrink-0 mt-0.5">
-                <Bell className="h-4 w-4 text-elegant-gold" />
+              <div className={`p-2 rounded-xl shrink-0 mt-0.5 border ${
+                t.title.includes("HOY") || t.type === "warning"
+                  ? "bg-amber-500/20 border-amber-500/40 text-amber-400 animate-pulse"
+                  : t.type === "success"
+                    ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
+                    : "bg-cyan-500/20 border-cyan-500/40 text-cyan-400"
+              }`}>
+                <Bell className="h-5 w-5" />
               </div>
-              <div className="flex-1 space-y-0.5 text-left">
-                <h4 className="text-xs font-bold tracking-tight">{t.title}</h4>
-                <p className="text-[11px] opacity-90 leading-relaxed">{t.message}</p>
+              <div className="flex-1 space-y-1 text-left min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-xs font-black tracking-tight uppercase leading-snug">{t.title}</h4>
+                </div>
+                <p className="text-[12px] opacity-95 leading-relaxed font-medium text-neutral-200 break-words">{t.message}</p>
               </div>
               <button 
                 onClick={() => removeToast(t.id)}
-                className="text-white/40 hover:text-white shrink-0 self-start p-0.5"
+                className="text-neutral-400 hover:text-white shrink-0 self-start p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+                title="Cerrar notificación"
               >
-                <X className="h-3.5 w-3.5" />
+                <X className="h-4 w-4" />
               </button>
             </motion.div>
           ))}

@@ -115,9 +115,22 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-// Handle postMessage from client for foreground/background sync
+// Handle postMessage from client for foreground/background sync and App Badging
 self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'TRIGGER_NOTIFICATION') {
+  if (!event.data) return;
+
+  if (event.data.type === 'SET_APP_BADGE') {
+    const count = event.data.count || 0;
+    if (count > 0 && 'setAppBadge' in self.navigator) {
+      self.navigator.setAppBadge(count).catch(() => {});
+    } else if ('clearAppBadge' in self.navigator) {
+      self.navigator.clearAppBadge().catch(() => {});
+    }
+  } else if (event.data.type === 'CLEAR_APP_BADGE') {
+    if ('clearAppBadge' in self.navigator) {
+      self.navigator.clearAppBadge().catch(() => {});
+    }
+  } else if (event.data.type === 'TRIGGER_NOTIFICATION') {
     const { title, body, url, options = {} } = event.data;
     self.registration.showNotification(title || '🚨 ¡Alarma SYNCBARBER! 💈', {
       body: body || options.body || 'Se ha registrado un agendamiento en la barbería.',
