@@ -11,16 +11,47 @@ export interface VersionRelease {
   }[];
 }
 
-export const CURRENT_APP_VERSION = "v2.6.4";
-export const CURRENT_APP_BUILD = "2026.09.21-Enterprise";
-export const CURRENT_APP_TAGLINE = "SaaS Multi-Tenant Edition • Horarios Nocturnos & Asistente Visual 12h";
+export const CURRENT_APP_VERSION = "v2.6.5";
+export const CURRENT_APP_BUILD = "2026.09.24-Enterprise";
+export const CURRENT_APP_TAGLINE = "SaaS Multi-Tenant Edition • App Badging, Alertas Flash & Auto-Updater PWA";
 
 export const APP_VERSION_HISTORY: VersionRelease[] = [
+  {
+    version: "v2.6.5",
+    name: "Insignia Numérica en App Icon, Flash Visual Modo Silla & Auto-Actualizador PWA",
+    releaseDate: "2026-09-24",
+    isCurrent: true,
+    type: "patch",
+    highlights: [
+      "Insignia Numérica en el Ícono de la App (App Badging API) con contador en tiempo real de turnos pendientes",
+      "Efecto Flash y pulso luminoso perimetral en Modo Silla PWA ante nuevas citas y cambios de estado",
+      "Detector y actualizador automático PWA para aplicar cambios inmediatamente sin caché atascada",
+      "Encabezados de Cache-Busting HTTP estrictos para sw.js e index.html en servidor de producción"
+    ],
+    details: [
+      {
+        category: "Notificaciones y App Badging",
+        items: [
+          "Sincronización con navigator.setAppBadge() en pantallas de inicio Android, iOS y escritorios compatibles.",
+          "Contador dinámico en el título del navegador y en la interfaz de usuario.",
+          "Animación luminosa dorada/azul perimetral en Modo Silla al recibir eventos de citas."
+        ]
+      },
+      {
+        category: "Infraestructura PWA & Despliegue",
+        items: [
+          "Cache-Control: no-cache en server.ts para que los clientes siempre reciban la última versión al desplegar con PM2.",
+          "Detección proactiva de actualizaciones del Service Worker con aviso visual de recarga.",
+          "Nueva versión de caché syncbarber-cache-v4 con limpieza inmediata de versiones anteriores."
+        ]
+      }
+    ]
+  },
   {
     version: "v2.6.4",
     name: "Disponibilidad Nocturna de Citas & Indicadores Visuales AM/PM",
     releaseDate: "2026-09-21",
-    isCurrent: true,
+    isCurrent: false,
     type: "patch",
     highlights: [
       "Ajuste del horario de cierre a las 22:00 (10:00 PM) para habilitar los turnos vespertinos y nocturnos de citas",

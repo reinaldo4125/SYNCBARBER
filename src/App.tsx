@@ -22,7 +22,8 @@ import {
   Wine,
   Menu,
   LogOut,
-  ChevronRight
+  ChevronRight,
+  RefreshCw
 } from "lucide-react";
 import { getLocalDateString, formatTime, formatAppointmentDateLabel } from "./utils/formatters";
 import ClientDashboard from "./components/ClientDashboard";
@@ -202,6 +203,33 @@ export default function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [errorText, setErrorText] = useState("");
+
+  // PWA Service Worker update state
+  const [swUpdateReady, setSwUpdateReady] = useState(false);
+  const swRegistrationRef = useRef<ServiceWorkerRegistration | null>(null);
+
+  useEffect(() => {
+    const handleSwUpdate = (e: any) => {
+      if (e.detail?.registration) {
+        swRegistrationRef.current = e.detail.registration;
+      }
+      setSwUpdateReady(true);
+    };
+
+    window.addEventListener("syncbarber_sw_update_ready", handleSwUpdate);
+    return () => {
+      window.removeEventListener("syncbarber_sw_update_ready", handleSwUpdate);
+    };
+  }, []);
+
+  const handleApplyUpdate = () => {
+    if (swRegistrationRef.current?.waiting) {
+      swRegistrationRef.current.waiting.postMessage({ type: "SKIP_WAITING" });
+    }
+    setTimeout(() => {
+      window.location.reload();
+    }, 200);
+  };
 
   // Toast notifications
   const [toasts, setToasts] = useState<RealTimeToast[]>([]);
@@ -2377,6 +2405,35 @@ export default function App() {
         isOpen={showVersionModal}
         onClose={() => setShowVersionModal(false)}
       />
+
+      {/* 10. AVISO FLOTANTE DE NUEVA VERSIÓN PWA DISPONIBLE */}
+      <AnimatePresence>
+        {swUpdateReady && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 50, scale: 0.95 }}
+            className="fixed bottom-5 left-4 right-4 md:left-auto md:right-6 md:w-96 z-[9999] bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400 text-black p-4 rounded-2xl shadow-2xl border-2 border-amber-300 flex items-center justify-between gap-3"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-black/10 flex items-center justify-center flex-shrink-0">
+                <Sparkles className="w-5 h-5 text-neutral-900 animate-spin" />
+              </div>
+              <div>
+                <p className="font-black text-xs uppercase tracking-wider text-black">¡Nueva Actualización v2.6.5!</p>
+                <p className="text-[11px] font-semibold text-neutral-900 leading-tight">Se descargaron nuevas funciones de turnos y alertas.</p>
+              </div>
+            </div>
+            <button
+              onClick={handleApplyUpdate}
+              className="px-3.5 py-2 bg-black hover:bg-neutral-900 text-amber-400 font-bold text-xs rounded-xl shadow-lg active:scale-95 transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              Actualizar
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* DemoCenter removed per user request */}
 

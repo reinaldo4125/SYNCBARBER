@@ -14,8 +14,34 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(err => {
+          navigator.serviceWorker.register('/sw.js').then((registration) => {
+            // Periodic update check every 2 minutes
+            setInterval(() => {
+              registration.update().catch(() => {});
+            }, 120000);
+
+            // Check if there is already a waiting service worker
+            if (registration.waiting) {
+              window.dispatchEvent(new CustomEvent('syncbarber_sw_update_ready', { detail: { registration } }));
+            }
+
+            registration.addEventListener('updatefound', () => {
+              const newWorker = registration.installing;
+              if (newWorker) {
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    window.dispatchEvent(new CustomEvent('syncbarber_sw_update_ready', { detail: { registration } }));
+                  }
+                });
+              }
+            });
+          }).catch(err => {
             console.log('ServiceWorker registration ignored:', err);
+          });
+
+          // Check on window refocus
+          window.addEventListener('focus', () => {
+            navigator.serviceWorker.getRegistration().then(reg => reg?.update().catch(() => {}));
           });
         });
       }

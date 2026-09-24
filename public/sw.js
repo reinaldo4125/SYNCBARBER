@@ -1,5 +1,5 @@
 // SYNCBARBER Progressive Web App Service Worker with Background Push Alarms
-const CACHE_NAME = 'syncbarber-cache-v3';
+const CACHE_NAME = 'syncbarber-cache-v4';
 
 // Assets to cache for basic offline shell
 const ASSETS_TO_CACHE = [
@@ -118,6 +118,11 @@ self.addEventListener('notificationclick', (event) => {
 // Handle postMessage from client for foreground/background sync and App Badging
 self.addEventListener('message', (event) => {
   if (!event.data) return;
+
+  if (event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+    return;
+  }
 
   if (event.data.type === 'SET_APP_BADGE') {
     const count = event.data.count || 0;
